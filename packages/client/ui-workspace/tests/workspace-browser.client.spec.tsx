@@ -723,6 +723,32 @@ describe('WorkspaceBrowser', () => {
     expect(screen.queryByText('alpha-s')).toBeNull()
   })
 
+  it('folds the Sessions and Files levels of a Workspace independently', () => {
+    const renderSlot: WorkspaceBrowserProps['renderSlot'] = (name: string) =>
+      name === 'sidebar.workspaces.files' ? <div data-testid="files-body" /> : null
+    mount({
+      useSessions: hook(sessionState([summary('alpha-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
+      renderSlot,
+    })
+    // Both levels start expanded once the Workspace itself is open.
+    fireEvent.click(screen.getByText('alpha'))
+    expect(screen.getByText('alpha-s')).toBeTruthy()
+    expect(screen.getByTestId('files-body')).toBeTruthy()
+    // Folding Sessions leaves the file tree standing: its scope comes from the
+    // Workspace's own Sessions, not from this level's visible rows.
+    fireEvent.click(screen.getByText('会话'))
+    expect(screen.queryByText('alpha-s')).toBeNull()
+    expect(screen.getByTestId('files-body')).toBeTruthy()
+    // Folding Files takes only the tree.
+    fireEvent.click(screen.getByText('文件'))
+    expect(screen.queryByTestId('files-body')).toBeNull()
+    // Closing the Workspace takes both levels with it.
+    fireEvent.click(screen.getByText('alpha'))
+    expect(screen.queryByText('会话')).toBeNull()
+    expect(screen.queryByText('文件')).toBeNull()
+  })
+
   it('a title double-click asks for the rename dialog with the row title', () => {
     const requestSessionRename = vi.fn()
     const open = vi.fn()
