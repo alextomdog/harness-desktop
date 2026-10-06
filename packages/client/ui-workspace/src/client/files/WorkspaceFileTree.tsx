@@ -114,7 +114,7 @@ function flatten(directories: ReadonlyMap<string, DirectoryState>, expanded: Rea
   const visit = (path: string, depth: number): void => {
     const state = directories.get(path)
     if (state === undefined) return
-    for (const entry of state.entries) {
+    for (const entry of orderEntries(state.entries)) {
       const entryPath = childPath(path, entry.name)
       rows.push({ path: entryPath, name: entry.name, type: entry.type, depth })
       if (entry.type === 'directory' && expanded.has(entryPath)) visit(entryPath, depth + 1)
@@ -122,6 +122,15 @@ function flatten(directories: ReadonlyMap<string, DirectoryState>, expanded: Rea
   }
   visit('', 0)
   return rows
+}
+
+/**
+ * Folders before files, each group by name: the Explorer's own order. The Host
+ * reports a stable name order, which would interleave a file among the folders.
+ */
+function orderEntries(entries: readonly WorkspaceTreeEntry[]): readonly WorkspaceTreeEntry[] {
+  const group = (entry: WorkspaceTreeEntry): number => entry.type === 'directory' ? 0 : 1
+  return [...entries].sort((a, b) => group(a) - group(b) || a.name.localeCompare(b.name))
 }
 
 /** The directory a new entry goes into for a row: the row itself, or its parent for a file. */

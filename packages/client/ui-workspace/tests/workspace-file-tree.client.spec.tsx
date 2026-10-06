@@ -61,6 +61,27 @@ describe('WorkspaceFileTree', () => {
     expect(listDirectory).toHaveBeenCalledWith(sessionId, '.', expect.anything())
   })
 
+  it('orders folders before files, each group by name', async () => {
+    // The Host's stable name order would interleave these.
+    const listDirectory = listingSource({
+      '.': {
+        path: '',
+        truncated: false,
+        entries: [
+          { name: 'a.txt', type: 'file' },
+          { name: 'zeta', type: 'directory' },
+          { name: 'b.txt', type: 'file' },
+          { name: 'alpha', type: 'directory' },
+        ],
+      },
+    })
+    mount({ listDirectory })
+
+    await screen.findByText('a.txt')
+    const names = screen.getAllByRole('treeitem').map(row => row.textContent)
+    expect(names).toEqual(['alpha', 'zeta', 'a.txt', 'b.txt'])
+  })
+
   it('loads a directory only when it is expanded', async () => {
     const listDirectory = listingSource({
       '.': { path: '', truncated: false, entries: [{ name: 'src', type: 'directory' }] },
