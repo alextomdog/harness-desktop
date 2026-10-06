@@ -18,6 +18,7 @@ import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useStat
 import clsx from 'clsx'
 import {
   Button, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconArchiveOutlineRegular,
+  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular,
   IconChevronsUpDownOutlineRegular, IconClockOutlineRegular, IconCloseFillRegular,
   IconFlatListOutlineRegular, IconFolderCloseRegular, IconProjectAddOutlineRegular,
   IconQueueOutlineRegular, IconSearchOutlineRegular, IconSlidersTwoOutlineRegular,
@@ -303,6 +304,18 @@ function SessionTree({
   const [drag, setDrag] = useState<DragState | null>(null)
   const sessionDropCommitted = useRef(false)
   const [workspaceDrag, setWorkspaceDrag] = useState<WorkspaceDragState | null>(null)
+  // The two levels inside a Workspace fold on their own: the Workspace row
+  // governs whether the group is open at all, these govern its Sessions and its
+  // Files independently. Keyed per group, so each Workspace remembers its pair.
+  const [collapsedLevels, setCollapsedLevels] = useState<ReadonlySet<string>>(new Set())
+  const toggleLevel = (key: string): void => {
+    setCollapsedLevels((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
   const workspaceDropCommitted = useRef(false)
   const nativeDragActive = drag !== null || workspaceDrag !== null
   useNativeDragAcceptance(nativeDragActive)
@@ -422,11 +435,18 @@ function SessionTree({
     const sessionsExpanded = visible.hiddenCount === 0
     rowKeys.push(`workspace:${group.key}`)
     const childRows = group.expanded ? children.map(child => renderGroup(child, depth + 1)) : []
-    const sessions = visible.rows
+    // Collapsing this Workspace's Sessions level empties the rows, exactly as
+    // collapsing the Workspace itself does, so one gate drives the rows and the
+    // overflow control together.
+    const sessionsOpen = !collapsedLevels.has(`${group.key}:sessions`)
+    const filesOpen = !collapsedLevels.has(`${group.key}:files`)
+    const sessions = sessionsOpen ? visible.rows : []
     // This Workspace's own file scope: a Session of THIS Workspace, whose header
-    // supplies the very root the group is named after. It falls away with the
-    // group's Session rows, so collapsing the Workspace collapses its files too.
-    const fileScope = group.workspaceId === undefined ? undefined : sessions[0]?.id
+    // supplies the very root the group is named after. It reads the GROUP's
+    // Sessions, not this level's rows, so collapsing the Sessions level leaves
+    // the file tree standing; it still falls away when the Workspace closes,
+    // because a closed group carries no Sessions at all.
+    const fileScope = group.workspaceId === undefined ? undefined : group.sessions[0]?.id
     for (const node of sessions) rowKeys.push(`session:${node.id}`)
     if (collapsed.hiddenCount > 0) rowKeys.push(`overflow:${group.key}`)
     const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
@@ -535,7 +555,19 @@ function SessionTree({
             {childRows}
           </div>
         )}
-        {sessions.length > 0 && <div className={css.groupLevel}>{t('section.sessions')}</div>}
+        {group.expanded && (
+          <button
+            type="button"
+            className={css.groupLevel}
+            aria-expanded={sessionsOpen}
+            onClick={() => { toggleLevel(`${group.key}:sessions`) }}
+          >
+            {sessionsOpen
+              ? <IconChevronDownOutlineRegular size={12} />
+              : <IconChevronRightOutlineRegular size={12} />}
+            <span>{t('section.sessions')}</span>
+          </button>
+        )}
         {sessions.map((node) => {
         // Session drag never leaves its browser-local account, and pinned
         // rows reorder only within their leading pinned block.
@@ -584,7 +616,7 @@ function SessionTree({
             />
           )
         })}
-        {collapsed.hiddenCount > 0 && (
+        {sessionsOpen && collapsed.hiddenCount > 0 && (
           <button
             type="button"
             className={css.sessionOverflowButton}
@@ -606,15 +638,26 @@ function SessionTree({
               : t('sessions.expand', { n: visible.hiddenCount })}
           </button>
         )}
-        {/* The Workspace's second level. It renders inside the group, so it is
-            that Workspace's files and it folds away with that Workspace's
-            Sessions — the group's own toggle, not a region-wide one. */}
-        {fileScope !== undefined && (
+        {/* The Workspace's second level: that Workspace's own files, folded by
+            its own heading rather than by a region-wide one. */}
+        {group.expanded && fileScope !== undefined && (
           <>
-            <div className={css.groupLevel}>{t('section.files')}</div>
-            <div className={css.groupFiles}>
-              {renderSlot('sidebar.workspaces.files', { sessionId: fileScope })}
-            </div>
+            <button
+              type="button"
+              className={css.groupLevel}
+              aria-expanded={filesOpen}
+              onClick={() => { toggleLevel(`${group.key}:files`) }}
+            >
+              {filesOpen
+                ? <IconChevronDownOutlineRegular size={12} />
+                : <IconChevronRightOutlineRegular size={12} />}
+              <span>{t('section.files')}</span>
+            </button>
+            {filesOpen && (
+              <div className={css.groupFiles}>
+                {renderSlot('sidebar.workspaces.files', { sessionId: fileScope })}
+              </div>
+            )}
           </>
         )}
       </div>

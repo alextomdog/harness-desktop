@@ -16,7 +16,10 @@
  * on a Session.
  */
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import clsx from 'clsx'
+import {
+  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular,
+  IconFolderCloseRegular, IconFolderOpenRegular,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import css from './WorkspaceFileTree.module.css'
@@ -264,44 +267,55 @@ export function WorkspaceFileTree({
   return (
     <div className={css.root} role="tree" aria-label={t('files.newFile')}>
       <div className={css.rows}>
-        {rows.map(row => (
-          <div
-            key={row.path}
-            className={clsx(css.row, row.type !== 'directory' && css.fileRow)}
-            style={{ '--dsh-file-depth': row.depth } as CSSProperties}
-            role="treeitem"
-            aria-level={row.depth + 1}
-            aria-expanded={row.type === 'directory' ? expanded.has(row.path) : undefined}
-            tabIndex={0}
-            onContextMenu={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              setRequest(null)
-              setMenu({ row, left: event.clientX, top: event.clientY })
-            }}
-            onClick={() => {
-              if (row.type === 'directory') toggle(row.path)
-              else openFile?.(sessionId, row.path)
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return
-              event.preventDefault()
-              if (row.type === 'directory') toggle(row.path)
-              else openFile?.(sessionId, row.path)
-            }}
-          >
-            <span
-              className={clsx(
-                css.caret,
-                row.type !== 'directory' && css.caretHidden,
-                expanded.has(row.path) && css.caretOpen,
-              )}
-              aria-hidden="true"
-            />
-            <span className={clsx(css.name, row.type === 'directory' && css.folderName)}>{row.name}</span>
-            {directories.get(row.path)?.status === 'loading' && <span className={css.rowStatus} aria-hidden="true" />}
-          </div>
-        ))}
+        {rows.map((row) => {
+          const open = expanded.has(row.path)
+          const directory = row.type === 'directory'
+          return (
+            <div
+              key={row.path}
+              className={css.row}
+              style={{ '--dsh-file-depth': row.depth } as CSSProperties}
+              role="treeitem"
+              aria-level={row.depth + 1}
+              aria-expanded={directory ? open : undefined}
+              tabIndex={0}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setRequest(null)
+                setMenu({ row, left: event.clientX, top: event.clientY })
+              }}
+              onClick={() => {
+                if (directory) toggle(row.path)
+                else openFile?.(sessionId, row.path)
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                if (directory) toggle(row.path)
+                else openFile?.(sessionId, row.path)
+              }}
+            >
+              {/* Tree-view chrome, in the Explorer's order: the disclosure
+                  twisty, then the entry's own glyph, then its name. Both cells
+                  keep their width for files, so names align down a folder. */}
+              <span className={css.twisty} aria-hidden="true">
+                {directory && (open
+                  ? <IconChevronDownOutlineRegular size={14} />
+                  : <IconChevronRightOutlineRegular size={14} />)}
+              </span>
+              <span className={css.glyph} aria-hidden="true">
+                {directory
+                  ? (open
+                    ? <IconFolderOpenRegular size={15} />
+                    : <IconFolderCloseRegular size={15} />)
+                  : <IconCodeOutlineRegular size={15} />}
+              </span>
+              <span className={css.name}>{row.name}</span>
+              {directories.get(row.path)?.status === 'loading' && <span className={css.rowStatus} aria-hidden="true" />}
+            </div>
+          )
+        })}
       </div>
 
       {request !== null && (

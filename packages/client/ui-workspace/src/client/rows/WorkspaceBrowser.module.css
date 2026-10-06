@@ -315,18 +315,34 @@
   padding-left: 0;
 }
 
-/* One Workspace's two levels. The sub-label is that Workspace's own heading, so
-   it carries the group's indent and reads as its child rather than as a region
-   section; the files body inherits the same indent for its tree rows. */
+/* One Workspace's two levels. Each heading is that Workspace's own disclosure
+   control, so it carries the group's indent and reads as its child rather than
+   as a region section; the files body inherits the same indent for its rows. */
 .groupLevel {
-  padding: 6px 4px 2px calc(4px + var(--dsh-workspace-indent, 0px) + 20px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin-left: calc(var(--dsh-workspace-indent, 0px) + 14px);
+  padding: 2px 4px 2px 2px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
   color: var(--dsw-alias-label-caption);
+  font: inherit;
   font-size: 11px;
   line-height: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupLevel:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .groupFiles {
-  padding-left: calc(var(--dsh-workspace-indent, 0px) + 20px);
+  padding-left: calc(var(--dsh-workspace-indent, 0px) + 18px);
 }
 
 /* The file tree's own section below the Session list: the two halves of a

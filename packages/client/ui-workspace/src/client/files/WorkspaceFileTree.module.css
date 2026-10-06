@@ -17,18 +17,21 @@
   min-height: 0;
 }
 
+/* Tree-view rows, in the Explorer's shape: a 22px row, the disclosure twisty at
+   the row's indent, then the entry's glyph, then the name. */
 .row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 24px;
+  gap: 2px;
+  height: 22px;
   /* One property drives indentation, so nesting needs no class per level. */
-  padding-left: calc(4px + var(--dsh-file-depth, 0) * 12px);
+  padding-left: calc(2px + var(--dsh-file-depth, 0) * 12px);
   padding-right: 4px;
   border-radius: var(--dsw-radius-sm);
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
 }
 
 .row:hover {
@@ -40,7 +43,25 @@
   outline-offset: -2px;
 }
 
-.fileRow {
+/* Both chrome cells keep their width when a file has no twisty, so names stay
+   aligned down the length of a folder. */
+.twisty {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -50,31 +71,6 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.folderName {
-  color: var(--dsw-alias-label-secondary);
-}
-
-/* Disclosure caret, drawn rather than imported so this section owns no icon
-   dependency. A file keeps the cell so names stay aligned across a folder. */
-.caret {
-  flex: none;
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid currentColor;
-  opacity: 0.7;
-  transition: transform 150ms var(--ds-ease-in-out);
-}
-
-.caretOpen {
-  transform: rotate(90deg);
-}
-
-.caretHidden {
-  visibility: hidden;
 }
 
 .rowStatus {
