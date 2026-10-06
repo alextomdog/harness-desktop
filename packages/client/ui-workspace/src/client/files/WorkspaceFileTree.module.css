@@ -1,0 +1,188 @@
+/**
+ * The workspace file tree: compact rows on the sidebar's shared type scale, with
+ * expansion depth carried by one custom property so indentation stays a single
+ * rule rather than one class per level.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-size: 13px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  /* One property drives indentation, so nesting needs no class per level. */
+  padding-left: calc(4px + var(--dsh-file-depth, 0) * 12px);
+  padding-right: 4px;
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.row:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+.fileRow {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.folderName {
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Disclosure caret, drawn rather than imported so this section owns no icon
+   dependency. A file keeps the cell so names stay aligned across a folder. */
+.caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  opacity: 0.7;
+  transition: transform 150ms var(--ds-ease-in-out);
+}
+
+.caretOpen {
+  transform: rotate(90deg);
+}
+
+.caretHidden {
+  visibility: hidden;
+}
+
+.rowStatus {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsw-alias-bg-skeleton);
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.retry {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--dsw-alias-link);
+  cursor: pointer;
+  font: inherit;
+}
+
+.prompt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 4px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+}
+
+.promptAction {
+  flex: none;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  padding: 2px 6px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.promptAction:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.promptAction:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notice {
+  padding: 2px 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+/* The row menu is fixed to the viewport so it escapes the column's scroll clip;
+   the section's own header still owns the region above it. */
+.menu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-elevated, var(--dsw-alias-bg-skeleton));
+  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.menuItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.menuSeparator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--dsw-alias-border-l4);
+}

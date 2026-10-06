@@ -44,6 +44,8 @@ import {
 import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from './shortcuts.ts'
 import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
+import { WorkspaceFileTree } from './files/WorkspaceFileTree.tsx'
+import type { WorkspaceFileTreeInjected } from './files/WorkspaceFileTree.tsx'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
 import { derive } from './session-actions/derived.ts'
@@ -258,6 +260,26 @@ export function apply(ctx: Context): void {
     createWorkspace: input => workspaces.create(input),
     hooks: { directoryFlow: pickerFlowSource },
   })
+  // The file tree reaches the filesystem only through these callbacks, so the
+  // component itself holds no Remote namespace and its spec drives it with
+  // plain functions. Every create is the same create-if-absent endpoint the
+  // Host already fences to the Session's workspace root.
+  const fileTreeInjected = (): WorkspaceFileTreeInjected => ({
+    listDirectory: async (sessionId, path, signal) => {
+      const result = await ctx.remote.workspaceFiles.list(sessionId, path, signal)
+      if (!result.ok) throw result.error
+      return { path: result.value.path, entries: result.value.entries, truncated: result.value.truncated }
+    },
+    createFile: async (sessionId, path, content, signal) => {
+      const result = await ctx.remote.workspaceFiles.createFile(sessionId, path, content, signal)
+      if (!result.ok) throw result.error
+    },
+    createDirectory: async (sessionId, path, signal) => {
+      const result = await ctx.remote.workspaceFiles.createDirectory(sessionId, path, signal)
+      if (!result.ok) throw result.error
+    },
+  })
+
   // Each registration declares its owned children in the same call; slot
   // injection follows both the owner and declaration HMR lifetimes.
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
@@ -288,6 +310,10 @@ export function apply(ctx: Context): void {
   // waits for the browser registration above to declare each list, and the
   // entries leave with it. Orders step by 100 so a plugin entry can land
   // between them.
+  ctx.slots.inject('sidebar.workspaces.files', () => ctx.slots.register(
+    { name: 'sidebar.workspaces.files', locale: NS, inject: fileTreeInjected },
+    WorkspaceFileTree,
+  ))
   ctx.slots.inject('sidebar.workspaces.session.menu.item', function* () {
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'pin', order: 100, locale: NS, inject: pinInjected }, PinSessionMenuItem)
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'rename', order: 200, locale: NS, inject: renameInjected }, RenameSessionMenuItem)
