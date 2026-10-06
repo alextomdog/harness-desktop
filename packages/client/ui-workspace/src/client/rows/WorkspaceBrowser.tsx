@@ -219,6 +219,7 @@ type SessionTreeProps = Pick<
   'useSessionStatus' | 'startSession' | 'open'
   | 'insertWorkspaceBefore' | 't' | 'usePanelInfo'
 > & PropsRenderSlots<
+  | 'sidebar.workspaces.files'
   | 'sidebar.workspaces.session.menu.item'
   | 'sidebar.workspaces.session.row.action'
   | 'sidebar.session.row.leading'
@@ -422,6 +423,10 @@ function SessionTree({
     rowKeys.push(`workspace:${group.key}`)
     const childRows = group.expanded ? children.map(child => renderGroup(child, depth + 1)) : []
     const sessions = visible.rows
+    // This Workspace's own file scope: a Session of THIS Workspace, whose header
+    // supplies the very root the group is named after. It falls away with the
+    // group's Session rows, so collapsing the Workspace collapses its files too.
+    const fileScope = group.workspaceId === undefined ? undefined : sessions[0]?.id
     for (const node of sessions) rowKeys.push(`session:${node.id}`)
     if (collapsed.hiddenCount > 0) rowKeys.push(`overflow:${group.key}`)
     const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
@@ -530,6 +535,7 @@ function SessionTree({
             {childRows}
           </div>
         )}
+        {sessions.length > 0 && <div className={css.groupLevel}>{t('section.sessions')}</div>}
         {sessions.map((node) => {
         // Session drag never leaves its browser-local account, and pinned
         // rows reorder only within their leading pinned block.
@@ -599,6 +605,17 @@ function SessionTree({
               ? t('sessions.collapse')
               : t('sessions.expand', { n: visible.hiddenCount })}
           </button>
+        )}
+        {/* The Workspace's second level. It renders inside the group, so it is
+            that Workspace's files and it folds away with that Workspace's
+            Sessions — the group's own toggle, not a region-wide one. */}
+        {fileScope !== undefined && (
+          <>
+            <div className={css.groupLevel}>{t('section.files')}</div>
+            <div className={css.groupFiles}>
+              {renderSlot('sidebar.workspaces.files', { sessionId: fileScope })}
+            </div>
+          </>
         )}
       </div>
     )
