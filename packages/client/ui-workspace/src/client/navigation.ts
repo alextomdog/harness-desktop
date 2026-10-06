@@ -30,6 +30,23 @@ interface MainSelection {
 /** Optional content preparation for the resolved target Session. */
 export type StartSessionOptions = DraftInitializationOptions
 
+/**
+ * Read-only view of the shell's current-Session selection: the region outside
+ * the conversation (the sidebar's workspace file tree) scopes itself by this,
+ * because it has no tab or hero of its own to carry a Session id.
+ */
+export interface CurrentSessionSource {
+  /** The Session the main conversation shows, or nothing when the shell has no selection. */
+  getSnapshot(): SessionId | undefined
+  /**
+   * Hear selection changes, including a first restore and a clear after the
+   * current Session was archived.
+   * @param listener - notified on the store's own flush schedule.
+   * @returns unsubscribe.
+   */
+  subscribe(listener: () => void): () => void
+}
+
 /** Workspace archive and directory operations consumed by Client UI domains. */
 export interface UiWorkspace {
   /**
@@ -47,6 +64,13 @@ export interface UiWorkspace {
    * notice unless a later navigation or disposal superseded the request.
    */
   openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void>
+  /**
+   * The Session the main conversation currently shows, or nothing before the
+   * shell restores its selection. Exposed so a region outside the conversation
+   * — the sidebar's workspace file tree — browses the Session the user is
+   * actually looking at rather than a Workspace chosen on its own.
+   */
+  readonly currentSession: CurrentSessionSource
   /**
    * Fork a Session without changing the current selection.
    * @param sessionId - source Session.
@@ -137,6 +161,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     {}, { persist: { name: 'dsh.sessions.current' } },
   )
   private mainReference: SessionReference | undefined
+  /** The shell's current-Session selection, exposed for regions outside the conversation. */
+  readonly currentSession: CurrentSessionSource
 
   /**
    * @param ctx - Client root Context.
@@ -155,6 +181,10 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     private readonly notify: (toast: RowToast) => void,
   ) {
     super(ctx, 'uiWorkspace')
+    this.currentSession = {
+      getSnapshot: () => this.selection.getSnapshot().sessionId,
+      subscribe: listener => this.selection.subscribe(listener),
+    }
     ctx.effect(() => {
       const stop = this.watchNavigation()
       return () => {

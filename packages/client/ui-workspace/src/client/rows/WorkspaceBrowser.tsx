@@ -53,6 +53,8 @@ const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_QUERY_MAX_CODE_UNITS = 500
 /** Idle Session rows visible per Workspace before the local overflow control. */
 const COLLAPSED_SESSION_LIMIT = 5
+/** Links the file section's disclosure button to the body it controls. */
+const FILES_BODY_ID = 'sidebar-workspace-files'
 
 /** Keep provisional and running rows outside the idle-session quota, including parents with running children. */
 function collapsedSessionRows(sessions: readonly SessionNode[], limit = COLLAPSED_SESSION_LIMIT): {
@@ -862,6 +864,7 @@ export function WorkspaceBrowser({
   closeAddWorkspace,
   setDirectoryBusy,
   dismissForkError,
+  useCurrentSession,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
@@ -896,6 +899,13 @@ export function WorkspaceBrowser({
   // without the field; they read as the default hide-archived view.
   const archivedFilter = useStore(s => s.archivedFilter ?? 'default')
   const groupExpansion = useStore(s => s.groupExpansion)
+  // The file section browses the Session the conversation shows. Without one
+  // there is no workspace root to list, so the section renders nothing rather
+  // than an empty tree that would have to explain itself.
+  const currentSessionId = useCurrentSession(id => id)
+  // Local chrome state, like the search box's: it resets with the region rather
+  // than persisting as a view preference the user never asked to keep.
+  const [filesExpanded, setFilesExpanded] = useState(true)
   const sessionOrderByAccount = useStore(s => s.sessionOrderByAccount)
   // Archived sessions are not openable: the row stays visible under the
   // filter but a click explains instead of navigating.
@@ -1418,6 +1428,29 @@ export function WorkspaceBrowser({
               />
             ))}
       </div>
+
+      {/* The workspace file tree: its own collapsible section below the Session
+          list, so the two halves of a Workspace — its conversations and its
+          files — read as siblings instead of sharing one scrolling list. */}
+      {wide && currentSessionId !== undefined && (
+        <div className={clsx(css.filesSection, filesExpanded && css.filesSectionOpen)}>
+          <button
+            type="button"
+            className={css.filesHeader}
+            aria-expanded={filesExpanded}
+            aria-controls={FILES_BODY_ID}
+            onClick={() => { setFilesExpanded(open => !open) }}
+          >
+            <span className={clsx(css.caret, filesExpanded && css.caretOpen)} aria-hidden="true" />
+            <span className={css.filesLabel}>{t('section.files')}</span>
+          </button>
+          {filesExpanded && (
+            <div id={FILES_BODY_ID} className={css.filesBody}>
+              {renderSlot('sidebar.workspaces.files', { sessionId: currentSessionId })}
+            </div>
+          )}
+        </div>
+      )}
 
       <Modal
         open={renameTarget !== null}

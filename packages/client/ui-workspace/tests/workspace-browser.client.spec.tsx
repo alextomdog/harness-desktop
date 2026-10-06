@@ -136,6 +136,9 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     createWorkspace: vi.fn(async () => workspace('created', [])),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
+    // No Session is current by default, so the file section stays unmounted;
+    // the section's own tests opt in through `overrides`.
+    useCurrentSession: hook<SessionId | undefined>(undefined),
     renderSlot: renderDirectoryFlowOnly,
     t,
     ...overrides,

@@ -315,6 +315,73 @@
   padding-left: 0;
 }
 
+/* The file tree's own section below the Session list: the two halves of a
+   Workspace read as siblings sharing the column, so neither scrolls the other
+   away. Collapsed, it is only its header. */
+.filesSection {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 4px -4px 0 4px;
+  padding-top: 4px;
+  border-top: 0.5px solid var(--dsw-alias-border-l4);
+}
+
+.filesSectionOpen {
+  flex: 1 1 0;
+}
+
+.filesHeader {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.filesHeader:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.filesLabel {
+  flex: none;
+  line-height: 20px;
+}
+
+/* Disclosure caret, drawn rather than imported: this section then owns no icon
+   dependency of its own. */
+.caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  transition: transform 150ms var(--ds-ease-in-out);
+}
+
+.caretOpen {
+  transform: rotate(90deg);
+}
+
+.filesBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin-left: -4px;
+  padding-left: 4px;
+}
+
 /* Relative for the bottom fade overlay. */
 .treeBody {
   flex: 1;

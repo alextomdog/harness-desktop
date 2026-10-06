@@ -111,6 +111,19 @@ export interface SessionRowScheduleOwnerProps {
   readonly sessionId: SessionId
 }
 
+/**
+ * What the workspace file tree receives: the Session whose workspace root it
+ * browses. The tree has no workspace of its own to fall back to, so the region
+ * fills this hole only while a Session is current.
+ */
+export interface WorkspaceFilesOwnerProps {
+  /**
+   * Session owning the workspace root. The tree addresses the Host by this id;
+   * the root itself is derived on the Host from that Session's header.
+   */
+  readonly sessionId: SessionId
+}
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
@@ -182,6 +195,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * handling to keep the row from opening.
      */
     'sidebar.workspaces.session.row.action': { kind: 'list'; scope: 'root'; owner: SessionRowOwnerProps }
+    /**
+     * The workspace file tree below the browsing region's own list: the left
+     * region's counterpart to the right sidebar's `files` tab type. One occupant
+     * browses the current Session's workspace and owns its own context menu
+     * rather than sharing a Session row's, because its entries act on the
+     * filesystem (`new file`, `new folder`) instead of on a Session. The region
+     * mounts the section only while a Session is current, since a tree with no
+     * workspace root has nothing to list.
+     */
+    'sidebar.workspaces.files': { kind: 'single'; scope: 'root'; owner: WorkspaceFilesOwnerProps }
   }
 }
 
@@ -223,6 +246,11 @@ export type WorkspaceBrowserInjected = {
     hostInfo: HostObservable<RemoteHostFacts>
     workspaceShortcuts: HostObservable<WorkspaceShortcutState>
     shortcuts: HostObservable<readonly ShortcutCatalogEntry[]>
+    /**
+     * The Session the shell's conversation currently shows, or nothing before
+     * the selection restores. The region scopes its file tree by it.
+     */
+    currentSession: HostObservable<SessionId | undefined>
   }
   /** Open the browser search and focus its input. */
   requestSearch: () => void
@@ -455,6 +483,7 @@ export type WorkspaceBrowserProps =
   PropsRuntime<'sidebar.workspaces'>
   & PropsRenderSlots<
     | 'sidebar.workspaces.directoryFlow'
+    | 'sidebar.workspaces.files'
     | 'sidebar.workspaces.session.menu.item'
     | 'sidebar.workspaces.session.row.action'
     | 'sidebar.session.row.leading'
