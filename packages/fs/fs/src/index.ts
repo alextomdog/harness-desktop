@@ -17,6 +17,7 @@ import type {
   FsEditRequest,
   FsInfo,
   FsMkdirOutcome,
+  FsMoveOutcome,
   FsPathInfo,
   FsObservation,
   FsTarget,
@@ -37,6 +38,7 @@ export type {
   FsErrorCode,
   FsInfo,
   FsMkdirOutcome,
+  FsMoveOutcome,
   FsObservation,
   FsPathInfo,
   FsTarget,
@@ -310,6 +312,25 @@ export abstract class FileSystem extends Service {
     signal?: AbortSignal,
     sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsMkdirOutcome>
+
+  /**
+   * Move one entry to another path in the same backend, which is what a rename
+   * is. An occupied destination fails with `FS_NOT_OBSERVED` rather than being
+   * replaced, so a move never destroys an entry the caller never observed.
+   * @param target - the resolved entry to move.
+   * @param destination - the resolved path it takes; it need not exist.
+   * @param signal - aborts before the move takes effect.
+   * @param sandboxPolicy - the per-call mode and workspace root this move runs
+   *   under; a sandboxing backend fences BOTH ends by it, the bare backend
+   *   ignores it. Omit to leave the backend its own default.
+   * @returns the moved entry at its destination.
+   */
+  abstract move(
+    target: FsTarget,
+    destination: FsTarget,
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsMoveOutcome>
 }
 
 export default FileSystem

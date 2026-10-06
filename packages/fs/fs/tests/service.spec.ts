@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { FileSystem, FsError, FsTargetKey, FsVersion, type FsMkdirOutcome } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsError, FsTargetKey, FsVersion, type FsMkdirOutcome, type FsMoveOutcome } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
   FsEditOutcome,
@@ -85,6 +85,9 @@ class FakeFileSystem extends FileSystem {
   }
   override async mkdir(_target: FsTarget): Promise<FsMkdirOutcome> {
     throw new Error('mkdir is not implemented by this in-memory double')
+  }
+  override async move(_target: FsTarget, _destination: FsTarget): Promise<FsMoveOutcome> {
+    throw new Error('move is not implemented by this in-memory double')
   }
 }
 

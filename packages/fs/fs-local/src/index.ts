@@ -18,6 +18,7 @@ import type {
   FsEditRequest,
   FsInfo,
   FsMkdirOutcome,
+  FsMoveOutcome,
   FsPathInfo,
   FsTarget,
   FsWriteIntent,
@@ -28,6 +29,7 @@ import {
   listDirectory,
   localDisplayPath,
   makeDirectory,
+  moveEntry,
   normalizeLineEndings,
   probe,
   probeNoFollow,
@@ -302,6 +304,32 @@ export class LocalFileSystem extends FileSystem {
       await makeDirectory(target.targetKey, signal)
       return { operation: 'create' }
     })
+  }
+
+  override async move(
+    target: FsTarget,
+    destination: FsTarget,
+    signal?: AbortSignal,
+  ): Promise<FsMoveOutcome> {
+    // Both ends are locked, in key order, so two opposite moves cannot deadlock
+    // and a concurrent write to either path cannot interleave with the move.
+    const [first, second] = String(target.targetKey) <= String(destination.targetKey)
+      ? [target.targetKey, destination.targetKey]
+      : [destination.targetKey, target.targetKey]
+    return this.withLock(first, () => this.withLock(second, async () => {
+      // No-follow probes: moving a symlink moves the link, not what it points at.
+      if (await probeNoFollow(target.targetKey) === null) {
+        throw new FsError(`cannot move "${target.displayPath}": no entry to move`, 'FS_NOT_FOUND')
+      }
+      if (await probeNoFollow(destination.targetKey) !== null) {
+        throw new FsError(
+          `cannot move "${target.displayPath}": "${destination.displayPath}" already exists`,
+          'FS_NOT_OBSERVED',
+        )
+      }
+      await moveEntry(target.targetKey, destination.targetKey, signal)
+      return { target: destination }
+    }))
   }
 
   /* v8 ignore next 5 -- the post-write probe finding the file absent requires a

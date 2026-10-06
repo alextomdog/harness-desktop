@@ -152,6 +152,15 @@ export interface FsMkdirOutcome {
   operation: 'create' | 'existing'
 }
 
+/** Outcome of moving one entry to another path. */
+export interface FsMoveOutcome {
+  /**
+   * The moved entry at its destination. The destination's own display path, so a
+   * caller that resolved the destination itself reports what it asked for.
+   */
+  readonly target: FsTarget
+}
+
 /** A literal-replacement edit request. */
 export interface FsEditRequest {
   /** Literal non-empty text to replace. Must match exactly (after line-ending normalization). */

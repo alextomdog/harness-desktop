@@ -30,7 +30,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { Config as LocalConfig } from '@deepseek-ai/dsh-fs-local'
 import { FsError } from '@deepseek-ai/dsh-fs'
-import type { FsEditOutcome, FsEditRequest, FsMkdirOutcome, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
+import type { FsEditOutcome, FsEditRequest, FsMkdirOutcome, FsMoveOutcome, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import { writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
@@ -123,6 +123,30 @@ export class SandboxedFileSystem extends LocalFileSystem {
     sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsMkdirOutcome> {
     return super.mkdir(await this.checkedTarget(target, sandboxPolicy), signal)
+  }
+
+  /**
+   * Fence BOTH ends of the move by the per-call policy, then delegate to the
+   * inherited implementation. A move fenced at one end only would be a way to
+   * carry an entry out of the workspace. See {@link checkedTarget}.
+   * @param target - the resolved entry to move.
+   * @param destination - the resolved path it takes.
+   * @param signal - aborts before the move takes effect.
+   * @param sandboxPolicy - the per-call mode and workspace root; omit to use
+   *   the deployment fallback.
+   * @returns the moved entry at its destination.
+   */
+  override async move(
+    target: FsTarget,
+    destination: FsTarget,
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsMoveOutcome> {
+    return super.move(
+      await this.checkedTarget(target, sandboxPolicy),
+      await this.checkedTarget(destination, sandboxPolicy),
+      signal,
+    )
   }
 
   /**

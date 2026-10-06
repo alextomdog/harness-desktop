@@ -122,6 +122,19 @@ export async function makeDirectory(absolutePath: string, signal?: AbortSignal):
   await mkdir(absolutePath, { recursive: true })
 }
 
+/**
+ * Move one entry to another path. The platform rename is atomic within a
+ * volume; the caller has already refused an occupied destination and a missing
+ * source.
+ * @param source - the absolute entry to move.
+ * @param destination - the absolute path it takes.
+ * @param signal - aborts before the move takes effect.
+ */
+export async function moveEntry(source: string, destination: string, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal, 'move')
+  await rename(source, destination)
+}
+
 /** Result of probing a path: null when it does not exist. */
 export interface PathInfo {
   version: FsVersion

@@ -857,3 +857,36 @@ describe('mkdir', () => {
     expect(await fs.stat(target)).toBeUndefined()
   })
 })
+
+describe('move', () => {
+  it('renames an entry in place and reports the destination target', async () => {
+    await fs.writeText(await fs.resolve('before.txt'), 'body')
+    const destination = await fs.resolve('after.txt')
+    const outcome = await fs.move(await fs.resolve('before.txt'), destination)
+    // The outcome names the destination target itself, not a re-derived one.
+    expect(outcome.target.targetKey).toBe(destination.targetKey)
+    expect(await fs.stat(await fs.resolve('before.txt'))).toBeUndefined()
+    expect(await fs.readText(await fs.resolve('after.txt'))).toBe('body')
+  })
+
+  it('refuses an occupied destination, leaving BOTH entries untouched', async () => {
+    await fs.writeText(await fs.resolve('a.txt'), 'A')
+    await fs.writeText(await fs.resolve('b.txt'), 'B')
+    await expect(fs.move(await fs.resolve('a.txt'), await fs.resolve('b.txt')))
+      .rejects.toMatchObject({ code: 'FS_NOT_OBSERVED' })
+    expect(await fs.readText(await fs.resolve('a.txt'))).toBe('A')
+    expect(await fs.readText(await fs.resolve('b.txt'))).toBe('B')
+  })
+
+  it('refuses a source that is not there', async () => {
+    await expect(fs.move(await fs.resolve('absent.txt'), await fs.resolve('next.txt')))
+      .rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
+  })
+
+  it('carries a directory and its contents', async () => {
+    await fs.writeText(await fs.resolve('dir/one.txt'), 'one')
+    await fs.move(await fs.resolve('dir'), await fs.resolve('renamed'))
+    expect(await fs.readText(await fs.resolve('renamed/one.txt'))).toBe('one')
+    expect(await fs.stat(await fs.resolve('dir'))).toBeUndefined()
+  })
+})
