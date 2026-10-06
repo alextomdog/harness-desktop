@@ -23,6 +23,7 @@ import type {
   IWorkspaces, SessionActivity, WorkspaceArchiveError, WorkspaceSnapshot,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only: pulls the Controller service merges.
@@ -281,6 +282,11 @@ export function apply(ctx: Context): void {
       const result = await ctx.remote.workspaceFiles.createDirectory(sessionId, path, signal)
       if (!result.ok) throw result.error
     },
+    // A workspace-relative path is enough: the Host resolves it against the
+    // Session's own root, and the built-in viewers claim the address by type.
+    openFile: (sessionId, path) => {
+      resourceNavigator(ctx)?.openResource(fileAddressFor(sessionId, undefined, path))
+    },
   })
 
   // Each registration declares its owned children in the same call; slot
@@ -351,6 +357,30 @@ export function apply(ctx: Context): void {
     },
     WorkspacePicker,
   ))
+}
+
+/** The right sidebar's resource navigator, as this package needs it. */
+interface ResourceNavigator {
+  /**
+   * Open a `dsh-resource://` address. The column expands in the same step, so
+   * one call both shows the content and reveals the surface holding it.
+   */
+  openResource(address: string): void
+}
+
+/**
+ * Reach the right sidebar's navigator without importing its client types: that
+ * package's type graph reaches packages whose client entry resolves to source
+ * and escapes this project's `rootDir`. The service is read structurally and
+ * validated, and stays optional — a composition without the right sidebar keeps
+ * a usable tree with no open item rather than an assembly failure.
+ * @param ctx - client root context.
+ * @returns the navigator, or nothing when no right sidebar is mounted.
+ */
+function resourceNavigator(ctx: Context): ResourceNavigator | undefined {
+  const service: unknown = ctx.get('sidebarRight', false)
+  if (typeof service !== 'object' || service === null || !('openResource' in service)) return undefined
+  return service as ResourceNavigator
 }
 
 /**

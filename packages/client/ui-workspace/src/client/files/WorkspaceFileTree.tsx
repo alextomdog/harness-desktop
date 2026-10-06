@@ -15,10 +15,12 @@
  * folder, copy a path), while `sidebar.workspaces.session.menu.item` entries act
  * on a Session.
  */
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import clsx from 'clsx'
 import {
   IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular,
-  IconFolderCloseRegular, IconFolderOpenRegular,
+  IconFolderCloseRegular, IconFolderOpenRegular, IconPlusOutlineRegular,
+  IconProjectAddOutlineRegular, IconRefreshOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -152,6 +154,7 @@ export function WorkspaceFileTree({
   const [directories, setDirectories] = useState<ReadonlyMap<string, DirectoryState>>(new Map())
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<MenuState | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
   const [request, setRequest] = useState<CreateRequest | null>(null)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
@@ -227,6 +230,12 @@ export function WorkspaceFileTree({
     setRequest(next)
   }, [])
 
+  // Re-read every directory the tree has already listed, so the refresh control
+  // picks up work done outside it without dropping the expansion state.
+  const reloadAll = useCallback((): void => {
+    for (const path of [...directories.keys()]) void load(path, lifetime.current.signal)
+  }, [directories, load])
+
   const submitCreate = useCallback(async (): Promise<void> => {
     if (request === null) return
     const name = draft.trim()
@@ -241,7 +250,12 @@ export function WorkspaceFileTree({
       // The parent's cached listing is now stale; one reload keeps the tree
       // truthful without a watch subscription this section does not own.
       await load(request.parent, lifetime.current.signal)
-      if (request.kind === 'directory') setExpanded(current => new Set(current).add(path))
+      if (request.kind === 'directory') {
+        // Adopt the new folder as open, WITH its listing: marking it expanded
+        // alone would draw an open folder that never loads its children.
+        setExpanded(current => new Set(current).add(path))
+        await load(path, lifetime.current.signal)
+      }
     } catch (error: unknown) {
       setNotice(createFailure(error, t, name))
     } finally {
@@ -262,52 +276,84 @@ export function WorkspaceFileTree({
       </div>
     )
   }
-  if (rootState.entries.length === 0 && request === null) {
-    return (
-      <div className={css.state}>
-        <span>{t('files.empty')}</span>
-        <button type="button" className={css.retry} onClick={() => { beginCreate({ kind: 'file', parent: '' }) }}>
-          {t('files.newFile')}
+  return (
+    <div className={css.root}>
+      {/* The tree's own title bar, always present. Without it an empty Workspace
+          offers no row to right-click, so its root is not reachable at all —
+          which is exactly how a folder could not be created. */}
+      <div className={css.toolbar}>
+        <button
+          type="button"
+          className={css.toolbarButton}
+          aria-label={t('files.newFile')}
+          title={t('files.newFile')}
+          onClick={() => { beginCreate({ kind: 'file', parent: '' }) }}
+        >
+          <IconPlusOutlineRegular size={14} />
+        </button>
+        <button
+          type="button"
+          className={css.toolbarButton}
+          aria-label={t('files.newFolder')}
+          title={t('files.newFolder')}
+          onClick={() => { beginCreate({ kind: 'directory', parent: '' }) }}
+        >
+          <IconProjectAddOutlineRegular size={14} />
+        </button>
+        <button
+          type="button"
+          className={css.toolbarButton}
+          aria-label={t('files.refresh')}
+          title={t('files.refresh')}
+          onClick={reloadAll}
+        >
+          <IconRefreshOutlineRegular size={14} />
         </button>
       </div>
-    )
-  }
 
-  return (
-    <div className={css.root} role="tree" aria-label={t('files.newFile')}>
-      <div className={css.rows}>
+      {rows.length === 0 && request === null && <div className={css.state}>{t('files.empty')}</div>}
+
+      <div className={css.rows} role="tree" aria-label={t('section.files')}>
         {rows.map((row) => {
           const open = expanded.has(row.path)
           const directory = row.type === 'directory'
           return (
             <div
               key={row.path}
-              className={css.row}
-              style={{ '--dsh-file-depth': row.depth } as CSSProperties}
+              className={clsx(css.row, selected === row.path && css.selected)}
               role="treeitem"
               aria-level={row.depth + 1}
+              aria-selected={selected === row.path}
               aria-expanded={directory ? open : undefined}
               tabIndex={0}
               onContextMenu={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
                 setRequest(null)
+                setSelected(row.path)
                 setMenu({ row, left: event.clientX, top: event.clientY })
               }}
               onClick={() => {
+                setSelected(row.path)
                 if (directory) toggle(row.path)
                 else openFile?.(sessionId, row.path)
               }}
               onKeyDown={(event) => {
                 if (event.key !== 'Enter' && event.key !== ' ') return
                 event.preventDefault()
+                setSelected(row.path)
                 if (directory) toggle(row.path)
                 else openFile?.(sessionId, row.path)
               }}
             >
-              {/* Tree-view chrome, in the Explorer's order: the disclosure
-                  twisty, then the entry's own glyph, then its name. Both cells
-                  keep their width for files, so names align down a folder. */}
+              {/* One rail per ancestor level, then the twisty, then the entry's
+                  glyph: the Explorer's order, so a name's column follows its
+                  depth and the rails line up down the tree. */}
+              <span className={css.guides} aria-hidden="true">
+                {Array.from({ length: row.depth }, (_, level) => (
+                  <span key={level} className={css.guide} />
+                ))}
+              </span>
               <span className={css.twisty} aria-hidden="true">
                 {directory && (open
                   ? <IconChevronDownOutlineRegular size={14} />
@@ -322,6 +368,36 @@ export function WorkspaceFileTree({
               </span>
               <span className={css.name}>{row.name}</span>
               {directories.get(row.path)?.status === 'loading' && <span className={css.rowStatus} aria-hidden="true" />}
+              {/* The Explorer puts its two creates on the folder row itself; they
+                  stay out of the pointer's way until the row is hovered. */}
+              {directory && (
+                <span className={css.rowActions}>
+                  <button
+                    type="button"
+                    className={css.rowAction}
+                    aria-label={t('files.newFileHere')}
+                    title={t('files.newFileHere')}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      beginCreate({ kind: 'file', parent: row.path })
+                    }}
+                  >
+                    <IconPlusOutlineRegular size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className={css.rowAction}
+                    aria-label={t('files.newFolderHere')}
+                    title={t('files.newFolderHere')}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      beginCreate({ kind: 'directory', parent: row.path })
+                    }}
+                  >
+                    <IconProjectAddOutlineRegular size={13} />
+                  </button>
+                </span>
+              )}
             </div>
           )
         })}

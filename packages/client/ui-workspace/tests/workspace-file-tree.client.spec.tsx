@@ -123,19 +123,80 @@ describe('WorkspaceFileTree', () => {
     expect(listDirectory).toHaveBeenCalledWith(sessionId, 'docs', expect.anything())
   })
 
-  it('creates a directory under the workspace root from the empty state', async () => {
-    const createDirectory = vi.fn(async () => {})
-    const listDirectory = listingSource({
-      '.': { path: '', truncated: false, entries: [] },
-      fresh: { path: 'fresh', truncated: false, entries: [] },
+  it('creates a folder at the workspace root from the tree toolbar', async () => {
+    // Stateful: the Host's next root listing contains what was just created.
+    let created = false
+    const createDirectory = vi.fn(async () => { created = true })
+    const listDirectory = vi.fn(async (_sessionId: SessionId, path: string): Promise<WorkspaceTreeListing> => {
+      if (path === 'fresh') return { path: 'fresh', truncated: false, entries: [{ name: 'inner.md', type: 'file' }] }
+      return {
+        path: '',
+        truncated: false,
+        entries: created ? [{ name: 'fresh', type: 'directory' }] : [],
+      }
     })
     mount({ createDirectory, listDirectory })
 
-    fireEvent.click(await screen.findByText('files.newFile'))
-    fireEvent.change(screen.getByLabelText('files.createFile.title'), { target: { value: '' } })
-    // An empty name cannot be submitted, so switch to a directory and name it.
-    fireEvent.click(screen.getByText('files.cancel'))
-    expect(createDirectory).not.toHaveBeenCalled()
+    // An empty Workspace has no row to right-click, so the tree's own toolbar is
+    // the only way to create at its root — the case this control exists for.
+    fireEvent.click(await screen.findByLabelText('files.newFolder'))
+    fireEvent.change(screen.getByLabelText('files.createFolder.title'), { target: { value: 'fresh' } })
+    fireEvent.click(screen.getByText('files.create'))
+
+    await waitFor(() => {
+      expect(createDirectory).toHaveBeenCalledWith(sessionId, 'fresh', expect.anything())
+    })
+    // The new folder is adopted open AND listed, so it does not appear as an open
+    // folder with nothing in it.
+    expect(await screen.findByText('inner.md')).toBeTruthy()
+    expect(listDirectory).toHaveBeenCalledWith(sessionId, 'fresh', expect.anything())
+  })
+
+  it('creates a file at the workspace root from the tree toolbar', async () => {
+    const createFile = vi.fn(async () => {})
+    mount({ createFile })
+
+    fireEvent.click(await screen.findByLabelText('files.newFile'))
+    fireEvent.change(screen.getByLabelText('files.createFile.title'), { target: { value: 'notes.md' } })
+    fireEvent.click(screen.getByText('files.create'))
+
+    await waitFor(() => {
+      expect(createFile).toHaveBeenCalledWith(sessionId, 'notes.md', '', expect.anything())
+    })
+  })
+
+  it('refreshes every listed directory from the toolbar', async () => {
+    const listDirectory = listingSource({
+      '.': { path: '', truncated: false, entries: [{ name: 'src', type: 'directory' }] },
+      src: { path: 'src', truncated: false, entries: [{ name: 'a.ts', type: 'file' }] },
+    })
+    mount({ listDirectory })
+
+    fireEvent.click(await screen.findByText('src'))
+    await screen.findByText('a.ts')
+    const before = listDirectory.mock.calls.length
+
+    fireEvent.click(screen.getByLabelText('files.refresh'))
+    await waitFor(() => {
+      expect(listDirectory.mock.calls.length).toBeGreaterThan(before)
+    })
+    // Both the root and the expanded folder were re-read, so a refresh keeps the
+    // expansion instead of collapsing the tree back to its root.
+    await waitFor(() => {
+      expect(listDirectory).toHaveBeenCalledWith(sessionId, 'src', expect.anything())
+    })
+  })
+
+  it('marks the row the user is acting on', async () => {
+    const listDirectory = listingSource({
+      '.': { path: '', truncated: false, entries: [{ name: 'a.md', type: 'file' }] },
+    })
+    mount({ listDirectory })
+
+    const row = (await screen.findByText('a.md')).closest('[role="treeitem"]') as HTMLElement
+    expect(row.getAttribute('aria-selected')).toBe('false')
+    fireEvent.click(screen.getByText('a.md'))
+    await waitFor(() => { expect(row.getAttribute('aria-selected')).toBe('true') })
   })
 
   it('reports an occupied name as a conflict instead of overwriting', async () => {
