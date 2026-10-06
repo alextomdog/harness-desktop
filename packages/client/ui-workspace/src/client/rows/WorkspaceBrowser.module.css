@@ -315,6 +315,14 @@
   padding-left: 0;
 }
 
+/* With the file section below it, the Session list hugs its own content up to a
+   cap and the tree takes the remaining column. Otherwise the list holds half the
+   region for a handful of rows and the two halves read as unrelated blocks with
+   a gap between them. Without a file section the list keeps filling the region. */
+.listArea:has(+ .filesSection) {
+  max-height: 55%;
+}
+
 /* The file tree's own section below the Session list: the two halves of a
    Workspace read as siblings sharing the column, so neither scrolls the other
    away. Collapsed, it is only its header. */
