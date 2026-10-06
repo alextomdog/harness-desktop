@@ -329,12 +329,14 @@
   border: none;
   border-radius: var(--dsw-radius-sm);
   background: transparent;
-  color: var(--dsw-alias-label-caption);
+  /* The region's own heading ink and inherited size, so a Workspace's two level
+     labels read as the same kind of label. */
+  color: var(--dsw-alias-label-tertiary);
   font: inherit;
-  font-size: 11px;
-  line-height: 16px;
+  line-height: 20px;
   text-align: left;
   cursor: pointer;
+  transition: background-color 120ms var(--ds-ease-in-out);
 }
 
 .groupLevel:hover {
