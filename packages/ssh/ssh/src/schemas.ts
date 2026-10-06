@@ -31,6 +31,8 @@ export const editSchema = z.object({ oldString: z.string(), newString: z.string(
 export const writeResultSchema = z.object({ operation: z.enum(['create', 'update']), version: z.string(), before: z.string().nullable(), after: z.string() }).strict()
 /** Atomic edit observation. */
 export const editResultSchema = z.object({ version: z.string(), before: z.string(), after: z.string() }).strict()
+/** Directory creation observation. */
+export const mkdirResultSchema = z.object({ operation: z.enum(['create', 'existing']) }).strict()
 /** Explicit child environment; null encodes an environment tombstone. */
 export const environmentSchema = z.record(z.string(), z.string().nullable())
 const collection = z.object({

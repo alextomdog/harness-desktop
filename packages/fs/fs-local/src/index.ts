@@ -17,6 +17,7 @@ import type {
   FsEditOutcome,
   FsEditRequest,
   FsInfo,
+  FsMkdirOutcome,
   FsPathInfo,
   FsTarget,
   FsWriteIntent,
@@ -26,6 +27,7 @@ import {
   applyLiteralEdit,
   listDirectory,
   localDisplayPath,
+  makeDirectory,
   normalizeLineEndings,
   probe,
   probeNoFollow,
@@ -287,6 +289,18 @@ export class LocalFileSystem extends FileSystem {
         before: original.content,
         after: edited.content,
       }
+    })
+  }
+
+  override async mkdir(target: FsTarget, signal?: AbortSignal): Promise<FsMkdirOutcome> {
+    return this.withLock(target.targetKey, async () => {
+      const existing = await probe(target.targetKey)
+      if (existing && existing.type !== 'directory') {
+        throw new FsError(`cannot create directory "${target.displayPath}": a non-directory entry exists`, 'FS_NOT_DIRECTORY')
+      }
+      if (existing) return { operation: 'existing' }
+      await makeDirectory(target.targetKey, signal)
+      return { operation: 'create' }
     })
   }
 

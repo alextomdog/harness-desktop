@@ -14,7 +14,7 @@ import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolResult } from '@deepseek-ai/dsh-tools'
-import { FileSystem, FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsError, FsTargetKey, FsVersion, type FsMkdirOutcome } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
   FsEditOutcome,
@@ -96,6 +96,9 @@ class FakeFs extends FileSystem {
     const before = this.files.get(target.targetKey) ?? null
     this.files.set(target.targetKey, content)
     return { operation: before !== null ? 'update' : 'create', version: FsVersion('v2'), before, after: content }
+  }
+  override async mkdir(_target: FsTarget): Promise<FsMkdirOutcome> {
+    throw new Error('mkdir is not implemented by this fake')
   }
   override async editText(target: FsTarget, edit: FsEditRequest, expected?: { version: FsVersion }): Promise<FsEditOutcome> {
     this.throwIfArmed()

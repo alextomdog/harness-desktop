@@ -240,6 +240,12 @@ export async function runSshHelper(transport: HelperTransport): Promise<void> {
         signal, resolved,
       )
     }
+    if (method === 'fs.mkdir') {
+      const input = z.object({ target: targetSchema, policy: policySchema }).strict().parse(raw)
+      const target = asTarget(input.target)
+      const resolved = await policy(input.policy, signal)
+      return ctx.fs.mkdir(target, signal, resolved)
+    }
     throw new Error(`Unknown SSH helper operation: ${method}`)
   })
   const closed = Promise.withResolvers<undefined>()

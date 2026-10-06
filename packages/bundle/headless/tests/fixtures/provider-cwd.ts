@@ -1,7 +1,7 @@
 /** Empty POSIX filesystem fixture whose execution coordinates differ from the Harness host. */
 import { posix } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { FileSystem, FsError, FsTargetKey, FsVersion, type FsTarget, type FsInfo } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsError, FsTargetKey, FsVersion, type FsTarget, type FsInfo, type FsMkdirOutcome } from '@deepseek-ai/dsh-fs'
 import schema from '@deepseek-ai/schemastery'
 
 /** Deployment coordinates for the deterministic provider. */
@@ -47,4 +47,5 @@ export default class ProviderCwdFileSystem extends FileSystem {
   override async readByteRange(): Promise<never> { throw new FsError('No such provider file', 'FS_NOT_FOUND') }
   override async writeText(): Promise<never> { throw new FsError('Read-only provider fixture', 'FS_SANDBOX_DENIED') }
   override async editText(): Promise<never> { throw new FsError('Read-only provider fixture', 'FS_SANDBOX_DENIED') }
+  override async mkdir(): Promise<FsMkdirOutcome> { throw new FsError('Read-only provider fixture', 'FS_SANDBOX_DENIED') }
 }

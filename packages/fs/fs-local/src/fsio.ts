@@ -111,6 +111,17 @@ export interface LocalTarget {
   targetKey: FsTargetKey
 }
 
+/**
+ * Create a directory and any missing parents. Idempotent at the platform level;
+ * the caller probes first so it can report `existing` rather than re-creating.
+ * @param absolutePath - the resolved absolute directory path to create.
+ * @param signal - aborts before the directory is created.
+ */
+export async function makeDirectory(absolutePath: string, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal, 'mkdir')
+  await mkdir(absolutePath, { recursive: true })
+}
+
 /** Result of probing a path: null when it does not exist. */
 export interface PathInfo {
   version: FsVersion

@@ -16,6 +16,7 @@ import type {
   FsEditOutcome,
   FsEditRequest,
   FsInfo,
+  FsMkdirOutcome,
   FsPathInfo,
   FsObservation,
   FsTarget,
@@ -35,6 +36,7 @@ export type {
   FsDirEntry,
   FsErrorCode,
   FsInfo,
+  FsMkdirOutcome,
   FsObservation,
   FsPathInfo,
   FsTarget,
@@ -291,6 +293,23 @@ export abstract class FileSystem extends Service {
     signal?: AbortSignal,
     sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsEditOutcome>
+
+  /**
+   * Create a directory, including any missing parents. An existing directory is
+   * not an error and reports `existing`; a non-directory entry at the path fails
+   * with `FS_NOT_DIRECTORY`.
+   * @param target - the resolved directory target to create.
+   * @param signal - aborts before the directory appears.
+   * @param sandboxPolicy - the per-call mode and workspace root this creation
+   *   runs under; a sandboxing backend fences the creation by it, the bare
+   *   backend ignores it. Omit to leave the backend its own default.
+   * @returns the outcome, naming whether this call made the directory.
+   */
+  abstract mkdir(
+    target: FsTarget,
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsMkdirOutcome>
 }
 
 export default FileSystem

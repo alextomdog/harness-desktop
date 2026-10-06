@@ -143,6 +143,15 @@ export interface FsWriteOutcome {
   after: string
 }
 
+/** Outcome of a directory creation. */
+export interface FsMkdirOutcome {
+  /**
+   * `create` when this call made the directory; `existing` when a directory was
+   * already present, which is not an error.
+   */
+  operation: 'create' | 'existing'
+}
+
 /** A literal-replacement edit request. */
 export interface FsEditRequest {
   /** Literal non-empty text to replace. Must match exactly (after line-ending normalization). */

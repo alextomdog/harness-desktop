@@ -835,3 +835,25 @@ describe('HMR / disposal', () => {
     expect(local.fs).toBeUndefined()
   })
 })
+
+describe('mkdir', () => {
+  it('creates missing parents and reports an existing directory on a repeat call', async () => {
+    const target = await fs.resolve(join(dir, 'a', 'b', 'c'))
+    expect(await fs.mkdir(target)).toEqual({ operation: 'create' })
+    expect((await fs.stat(target))?.type).toBe('directory')
+    // Idempotent by contract: the second call reports what is already there.
+    expect(await fs.mkdir(target)).toEqual({ operation: 'existing' })
+  })
+
+  it('rejects a path occupied by a non-directory entry', async () => {
+    const occupied = await fs.resolve('occupied.txt')
+    await fs.writeText(occupied, 'text')
+    await expect(fs.mkdir(occupied)).rejects.toMatchObject({ code: 'FS_NOT_DIRECTORY' })
+  })
+
+  it('aborts before creating when the signal is already aborted', async () => {
+    const target = await fs.resolve('never')
+    await expect(fs.mkdir(target, AbortSignal.abort())).rejects.toMatchObject({ code: 'FS_ABORTED' })
+    expect(await fs.stat(target)).toBeUndefined()
+  })
+})

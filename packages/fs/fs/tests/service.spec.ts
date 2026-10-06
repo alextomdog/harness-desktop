@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { FileSystem, FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsError, FsTargetKey, FsVersion, type FsMkdirOutcome } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
   FsEditOutcome,
@@ -82,6 +82,9 @@ class FakeFileSystem extends FileSystem {
     const after = content.split(edit.oldString).join(edit.newString)
     this.files.set(target.targetKey, after)
     return { version: FsVersion('v3'), before: content, after }
+  }
+  override async mkdir(_target: FsTarget): Promise<FsMkdirOutcome> {
+    throw new Error('mkdir is not implemented by this in-memory double')
   }
 }
 

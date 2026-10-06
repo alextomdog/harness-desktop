@@ -11,7 +11,7 @@ import SessionStore, { SessionId, SessionSeq, type SessionEvent, type SurfaceInt
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import AgentRegistry, { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop, { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
-import { FileSystem, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsTargetKey, FsVersion, type FsMkdirOutcome } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
   FsEditOutcome,
@@ -189,6 +189,10 @@ class RecordingFileSystem extends FileSystem {
 
   override async editText(_target: FsTarget, _edit: FsEditRequest): Promise<FsEditOutcome> {
     return { version: FsVersion('unused'), before: '', after: '' }
+  }
+
+  override async mkdir(_target: FsTarget): Promise<FsMkdirOutcome> {
+    return { operation: 'create' }
   }
 }
 
