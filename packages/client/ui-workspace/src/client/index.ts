@@ -96,7 +96,10 @@ const NS = 'workspace'
  * declaration through `slots.inject()` instead of assuming order.
  */
 export const inject = [
-  'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts',
+  'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker',
+  // The file tree lists and creates through this namespace; a Remote call needs
+  // its namespace declared here, not merely present in the type vocabulary.
+  'remote.workspaceFiles', 'layout', 'shortcuts',
 ]
 
 /**

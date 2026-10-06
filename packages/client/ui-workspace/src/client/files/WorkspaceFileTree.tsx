@@ -67,6 +67,8 @@ interface DirectoryState {
   readonly status: 'loading' | 'ready' | 'error'
   readonly entries: readonly WorkspaceTreeEntry[]
   readonly truncated: boolean
+  /** The wire failure's own message; shown untranslated, by the locale policy. */
+  readonly failure?: string
 }
 
 /** One rendered row, flattened from the expanded tree. */
@@ -149,14 +151,20 @@ export function WorkspaceFileTree({
   const load = useCallback(async (path: string, signal: AbortSignal): Promise<void> => {
     setDirectories(current => new Map(current).set(path, LOADING))
     try {
-      const listing = await listDirectory(sessionId, path, signal)
+      // The Host names the workspace root `.` and refuses an empty path, while
+      // the tree keeps `''` as its own root key so every row path stays a plain
+      // workspace-relative path.
+      const listing = await listDirectory(sessionId, path === '' ? '.' : path, signal)
       if (signal.aborted) return
       setDirectories(current => new Map(current).set(path, {
         status: 'ready', entries: listing.entries, truncated: listing.truncated,
       }))
-    } catch {
+    } catch (error: unknown) {
       if (signal.aborted) return
-      setDirectories(current => new Map(current).set(path, ERRORED))
+      // A failure's own message is the most useful thing a user can be shown
+      // here, and the locale policy keeps wire strings untranslated.
+      const failure = error instanceof Error ? error.message : String(error)
+      setDirectories(current => new Map(current).set(path, { ...ERRORED, failure }))
     }
   }, [listDirectory, sessionId])
 
@@ -235,7 +243,7 @@ export function WorkspaceFileTree({
   if (rootState.status === 'error') {
     return (
       <div className={css.state}>
-        <span>{t('files.error')}</span>
+        <span>{rootState.failure ?? t('files.error')}</span>
         <button type="button" className={css.retry} onClick={() => { void load('', lifetime.current.signal) }}>
           {t('files.retry')}
         </button>
