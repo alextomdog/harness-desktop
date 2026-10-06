@@ -6,9 +6,16 @@
  * File reads follow the composed filesystem's read access, including paths
  * outside the workspace. The selected Session header supplies the base for
  * relative paths, with the sandbox policy root as its no-cwd fallback, not a
- * read-containment restriction. Directory listings and change observations
- * remain workspace-scoped. File-kind checks and configured read caps apply to
- * every preview; this service exposes no mutations.
+ * read-containment restriction. Directory listings, change observations, and
+ * the two creates remain workspace-scoped. File-kind checks and configured read
+ * caps apply to every preview.
+ *
+ * `createFile` and `createDirectory` are this namespace's only mutations and the
+ * only methods here that reach a fenced write path. Both are create-if-absent,
+ * both refuse a path outside the Session's workspace root, and both fence the
+ * write to that root explicitly rather than inheriting the deployment default,
+ * which is calibrated for agent tool calls rather than the operator's own tree
+ * actions.
  *
  * A page is cut from `streamText`, which decodes and rejects non-UTF-8 as it
  * goes, so the file is read only up to the first character past the page and
@@ -23,7 +30,7 @@ import { posix, win32 } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-fs'
-import type { FsDirEntry, FsInfo, FsPathInfo, FsTarget } from '@deepseek-ai/dsh-fs'
+import type { FsDirEntry, FsInfo, FsPathInfo, FsTarget, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
@@ -33,6 +40,7 @@ import { WorkspaceChangeFeed } from './changes.ts'
 import type {
   WorkspaceByteRange,
   WorkspaceByteReadOptions,
+  WorkspaceDirectoryCreated,
   WorkspaceDirectoryEntry,
   WorkspaceDirectoryListing,
   WorkspaceFileBytes,
@@ -179,6 +187,20 @@ function directoryEntry(child: FsDirEntry): WorkspaceDirectoryEntry {
   }
 }
 
+/**
+ * A path about to be created, with the sandbox policy its write runs under.
+ * The policy is structurally a `SandboxExecutionPolicy`; it is declared here so
+ * one argument does not add a dependency on the sandbox type module.
+ */
+interface CreateTarget {
+  readonly target: FsTarget
+  readonly policy: {
+    readonly mode: 'workspace-write'
+    readonly workspaceRoot: string
+    readonly sessionId?: SessionId
+  }
+}
+
 /** Host Remote file reads and workspace directory observations over the composed filesystem. */
 export class WorkspaceFiles extends TypertRemoteService {
   static inject = ['fs', 'sandboxPolicy', 'sessions', 'typert']
@@ -293,6 +315,63 @@ export class WorkspaceFiles extends TypertRemoteService {
   }
 
   /**
+   * Create one new UTF-8 text file inside the Session's workspace. The create
+   * never overwrites: an occupied path is refused rather than read and replaced,
+   * so this method cannot destroy content the caller never observed.
+   * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+   * @param path - workspace path, absolute or relative to the workspace root; must stay inside it.
+   * @param content - the complete initial file content.
+   * @param signal - caller cancellation.
+   * @returns the new file's absolute path, version, and byte size.
+   */
+  @Remote
+  async createFile(
+    workspaceFileScope: WorkspaceFileScope,
+    path: string,
+    content: string,
+    signal: AbortSignal,
+  ): Promise<WorkspaceFileStat> {
+    const bytes = Buffer.byteLength(content, 'utf8')
+    if (bytes > this.config.maxFileBytes) {
+      throw new RemoteError(
+        'workspace-file/too-large',
+        `${bytes} bytes of "${path}" exceed the ${this.config.maxFileBytes} byte cap`,
+        { path, limit: this.config.maxFileBytes },
+      )
+    }
+    const { target, policy } = await this.creationTarget(workspaceFileScope, path, signal)
+    const outcome = await this.createText(target, content, signal, policy, path)
+    return { absolutePath: this.ctx.fs.processPath(target), version: outcome.version, bytes }
+  }
+
+  /**
+   * Create one new directory inside the Session's workspace, including any
+   * missing parents. An occupied path is refused, so the caller learns that its
+   * "new folder" collided instead of silently adopting an existing tree.
+   * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+   * @param path - workspace path, absolute or relative to the workspace root; must stay inside it.
+   * @param signal - caller cancellation.
+   * @returns the new directory's absolute path.
+   */
+  @Remote
+  async createDirectory(
+    workspaceFileScope: WorkspaceFileScope,
+    path: string,
+    signal: AbortSignal,
+  ): Promise<WorkspaceDirectoryCreated> {
+    const { target, policy } = await this.creationTarget(workspaceFileScope, path, signal)
+    try {
+      const outcome = await this.ctx.fs.mkdir(target, signal, policy)
+      if (outcome.operation === 'existing') {
+        throw new RemoteError('workspace-file/already-exists', `an entry already exists at "${path}"`, { path })
+      }
+    } catch (error: unknown) {
+      throw this.refusalOf(error, path) ?? error
+    }
+    return { absolutePath: this.ctx.fs.processPath(target) }
+  }
+
+  /**
    * List the direct children of one directory inside the Session's workspace.
    * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
    * @param path - workspace path, absolute or relative to the workspace root.
@@ -396,6 +475,63 @@ export class WorkspaceFiles extends TypertRemoteService {
       throw new RemoteError('workspace-file/not-found', `no entry at "${path}"`, { path })
     }
     return { root, workspaceRoot, entry }
+  }
+
+  /**
+   * Resolve a path that is about to be created. Unlike `inspect`, the target is
+   * expected to be absent, so this resolves without requiring an existing entry
+   * and then refuses anything the Session's workspace root does not contain.
+   *
+   * The returned policy is deliberately the workspace-write fence over THIS
+   * Session's root rather than `sandboxPolicy.resolve()`. The resolved default
+   * governs agent tool calls, where a read-only deployment is a meaningful
+   * statement about what the model may do; these two methods instead carry out
+   * the operator's own tree action, and the fence still refuses every path
+   * outside the workspace.
+   */
+  private async creationTarget(
+    workspaceFileScope: WorkspaceFileScope,
+    path: string,
+    signal: AbortSignal,
+  ): Promise<CreateTarget> {
+    if (path.length === 0) throw new RemoteError('gateway/bad-request', 'path is required', {})
+    const { workspaceRoot, sessionId } = workspaceFileScope
+    const root = await this.ctx.fs.resolve(workspaceRoot, { signal })
+    const target = await this.confine(root, workspaceRoot, path, signal)
+    return { target, policy: { mode: 'workspace-write', workspaceRoot, sessionId } }
+  }
+
+  /** Create the file, translating the backend's create-if-absent refusal. */
+  private async createText(
+    target: FsTarget,
+    content: string,
+    signal: AbortSignal,
+    policy: CreateTarget['policy'],
+    path: string,
+  ): Promise<FsWriteOutcome> {
+    try {
+      return await this.ctx.fs.writeText(target, content, { kind: 'createIfAbsent' }, signal, policy)
+    } catch (error: unknown) {
+      throw this.refusalOf(error, path) ?? error
+    }
+  }
+
+  /**
+   * Classify a backend refusal this endpoint can name, or return `undefined` for
+   * anything else so the caller rethrows it and the Gateway folds it into
+   * `gateway/internal`. The backend's error class belongs to whichever `dsh-fs`
+   * instance the provider loaded, so the code is read structurally, as
+   * `isNotTextRefusal` does.
+   */
+  private refusalOf(error: unknown, path: string): RemoteError | undefined {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+    if (code === 'FS_NOT_OBSERVED' || code === 'FS_NOT_REGULAR_FILE' || code === 'FS_NOT_DIRECTORY') {
+      return new RemoteError('workspace-file/already-exists', `an entry already exists at "${path}"`, { path }, { cause: error })
+    }
+    if (code === 'FS_SANDBOX_DENIED' || code === 'FS_PERMISSION_DENIED') {
+      return new RemoteError('workspace-file/denied', `creating "${path}" is denied`, { path }, { cause: error })
+    }
+    return undefined
   }
 
   /** Resolve an inspected path and refuse it unless the workspace contains it. */

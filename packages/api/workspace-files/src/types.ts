@@ -8,8 +8,10 @@
  *   filesystem's execution world, because their consumer is the Client
  *   resource system, whose `dsh-resource://file/session/<id>/<path>` address carries that
  *   same path.
- * - `list` speaks workspace paths — the same syntax its `path` argument accepts —
- *   because its consumer is a tree rooted at the workspace root.
+ * - `list`, `createFile`, and `createDirectory` speak workspace paths — the
+ *   syntax their `path` argument accepts — because their consumer is a tree
+ *   rooted at the workspace root. The two creates are this namespace's only
+ *   mutations, and each refuses a path that is already occupied.
  *
  * @module @deepseek-ai/dsh-api-workspace-files/types
  */
@@ -32,6 +34,19 @@ export interface WorkspaceFileStat {
   readonly version: string
   /** Byte size of the complete file, when the backend reports it. */
   readonly bytes?: number
+}
+
+/**
+ * One directory this namespace created. Returned in place of a
+ * {@link WorkspaceFileStat} because a directory carries no version and no byte
+ * size.
+ */
+export interface WorkspaceDirectoryCreated {
+  /**
+   * Absolute path of the new directory in the filesystem's execution world,
+   * in the same form as {@link WorkspaceFileStat.absolutePath}.
+   */
+  readonly absolutePath: string
 }
 
 /**
@@ -172,5 +187,13 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
       readonly path: string
       readonly kind: 'file' | 'symlink' | 'other'
     }
+    /**
+     * A create was refused because an entry already occupies that path. Both
+     * `createFile` and `createDirectory` are create-if-absent: neither
+     * overwrites or adopts what is already there.
+     */
+    'workspace-file/already-exists': { readonly path: string }
+    /** The sandbox policy or the filesystem refused the create. */
+    'workspace-file/denied': { readonly path: string }
   }
 }
