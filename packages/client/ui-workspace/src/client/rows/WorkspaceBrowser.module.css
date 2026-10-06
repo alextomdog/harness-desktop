@@ -341,8 +341,11 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+/* The tree brings its own heading, so this only indents the section to the same
+   column as the Sessions label above it: both labels and every row's twisty then
+   sit on one left edge. */
 .groupFiles {
-  padding-left: calc(var(--dsh-workspace-indent, 0px) + 18px);
+  padding-left: calc(var(--dsh-workspace-indent, 0px) + 14px);
 }
 
 /* The file tree's own section below the Session list: the two halves of a

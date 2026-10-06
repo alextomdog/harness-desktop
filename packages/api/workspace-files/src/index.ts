@@ -43,6 +43,7 @@ import type {
   WorkspaceDirectoryCreated,
   WorkspaceDirectoryEntry,
   WorkspaceDirectoryListing,
+  WorkspaceEntryRenamed,
   WorkspaceFileBytes,
   WorkspaceFileRange,
   WorkspaceFileStat,
@@ -372,6 +373,41 @@ export class WorkspaceFiles extends TypertRemoteService {
   }
 
   /**
+   * Rename one entry inside the Session's workspace, changing its last path
+   * segment only. A name carrying a separator is refused rather than treated as
+   * a move, so this endpoint cannot relocate anything the caller did not name.
+   * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+   * @param path - workspace path of the entry to rename, absolute or relative to the root.
+   * @param name - the entry's new single path segment.
+   * @param signal - caller cancellation.
+   * @returns the entry's new absolute path.
+   */
+  @Remote
+  async renameEntry(
+    workspaceFileScope: WorkspaceFileScope,
+    path: string,
+    name: string,
+    signal: AbortSignal,
+  ): Promise<WorkspaceEntryRenamed> {
+    signal.throwIfAborted()
+    if (name === '' || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
+      throw new RemoteError('gateway/bad-request', 'name must be a single path segment', {})
+    }
+    const { workspaceRoot, sessionId } = workspaceFileScope
+    const root = await this.ctx.fs.resolve(workspaceRoot, { signal })
+    const source = await this.confine(root, workspaceRoot, path, signal)
+    // Keep the entry in its own directory: only the last segment changes.
+    const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+    const destination = await this.confine(root, workspaceRoot, `${path.slice(0, cut + 1)}${name}`, signal)
+    try {
+      await this.ctx.fs.move(source, destination, signal, { mode: 'workspace-write', workspaceRoot, sessionId })
+    } catch (error: unknown) {
+      throw this.refusalOf(error, path) ?? error
+    }
+    return { absolutePath: this.ctx.fs.processPath(destination) }
+  }
+
+  /**
    * List the direct children of one directory inside the Session's workspace.
    * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
    * @param path - workspace path, absolute or relative to the workspace root.
@@ -525,6 +561,9 @@ export class WorkspaceFiles extends TypertRemoteService {
    */
   private refusalOf(error: unknown, path: string): RemoteError | undefined {
     const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+    if (code === 'FS_NOT_FOUND') {
+      return new RemoteError('workspace-file/not-found', `no entry at "${path}"`, { path }, { cause: error })
+    }
     if (code === 'FS_NOT_OBSERVED' || code === 'FS_NOT_REGULAR_FILE' || code === 'FS_NOT_DIRECTORY') {
       return new RemoteError('workspace-file/already-exists', `an entry already exists at "${path}"`, { path }, { cause: error })
     }

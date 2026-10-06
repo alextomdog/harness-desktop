@@ -224,6 +224,42 @@ describe('WorkspaceFileTree', () => {
     expect(screen.getByText('files.retry')).toBeTruthy()
   })
 
+  it('folds its own section from its heading, keeping the heading and actions', async () => {
+    const listDirectory = listingSource({
+      '.': { path: '', truncated: false, entries: [{ name: 'a.md', type: 'file' }] },
+    })
+    mount({ listDirectory })
+
+    expect(await screen.findByText('a.md')).toBeTruthy()
+    fireEvent.click(screen.getByText('section.files'))
+    await waitFor(() => { expect(screen.queryByText('a.md')).toBeNull() })
+    // The heading and its actions stay: they are how the section comes back.
+    expect(screen.getByLabelText('files.newFile')).toBeTruthy()
+  })
+
+  it('renames a row in place from its menu, opening on the name it replaces', async () => {
+    const renameEntry = vi.fn(async () => {})
+    const listDirectory = listingSource({
+      '.': { path: '', truncated: false, entries: [{ name: 'old.md', type: 'file' }] },
+    })
+    mount({ renameEntry, listDirectory })
+
+    fireEvent.contextMenu(await screen.findByText('old.md'))
+    fireEvent.click(screen.getByText('files.rename'))
+
+    const input = screen.getByLabelText('files.rename') as HTMLInputElement
+    expect(input.value).toBe('old.md')
+    fireEvent.change(input, { target: { value: 'new.md' } })
+    fireEvent.click(screen.getByText('files.rename'))
+
+    await waitFor(() => {
+      expect(renameEntry).toHaveBeenCalledWith(sessionId, 'old.md', 'new.md', expect.anything())
+    })
+    expect(await screen.findByText('files.renamed:{"name":"new.md"}')).toBeTruthy()
+    // The holding directory is reloaded, so the old name cannot linger.
+    expect(listDirectory).toHaveBeenCalledWith(sessionId, '.', expect.anything())
+  })
+
   it('copies a row relative and absolute path', async () => {
     const writeText = vi.fn(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })

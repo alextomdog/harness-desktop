@@ -49,6 +49,15 @@ export interface WorkspaceDirectoryCreated {
   readonly absolutePath: string
 }
 
+/** One entry at its new path, after a rename. */
+export interface WorkspaceEntryRenamed {
+  /**
+   * Absolute path the entry now has, in the same form as
+   * {@link WorkspaceFileStat.absolutePath}.
+   */
+  readonly absolutePath: string
+}
+
 /**
  * The line window one `read` returns. Lines are 1-based and end at `\n`; a
  * final `\n` terminates the last line rather than starting an empty one.

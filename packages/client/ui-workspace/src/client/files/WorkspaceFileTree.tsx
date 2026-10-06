@@ -55,6 +55,11 @@ export interface WorkspaceFileTreeInjected {
   /** Create one new directory; rejects when the path is already occupied. */
   createDirectory: (sessionId: SessionId, path: string, signal: AbortSignal) => Promise<void>
   /**
+   * Rename one entry in place, changing its last path segment. Optional: a
+   * composition without it offers no rename rather than a dead item.
+   */
+  renameEntry?: (sessionId: SessionId, path: string, name: string, signal: AbortSignal) => Promise<void>
+  /**
    * Reveal one file in the resource surface that owns file tabs. Optional: a
    * composition without that surface still gets a usable tree — expansion,
    * copy-path and the two creates — instead of a row that looks broken.
@@ -93,12 +98,24 @@ interface Row {
   readonly depth: number
 }
 
-/** The pending create, raised from the row menu or the section's own control. */
-interface CreateRequest {
-  readonly kind: 'file' | 'directory'
-  /** Workspace-relative directory the new entry lands in; `''` is the workspace root. */
-  readonly parent: string
-}
+/**
+ * The pending name edit: creating an entry in a directory, or renaming one that
+ * is already there. Both go through the same input, so the section has one name
+ * editor rather than two.
+ */
+type NameRequest =
+  | {
+    readonly kind: 'file' | 'directory'
+    /** Workspace-relative directory the new entry lands in; `''` is the workspace root. */
+    readonly parent: string
+  }
+  | {
+    readonly kind: 'rename'
+    /** Workspace-relative path of the entry being renamed. */
+    readonly path: string
+    /** Its name now, so the editor opens on the text being replaced. */
+    readonly name: string
+  }
 
 /** The open row menu, positioned at the pointer. */
 interface MenuState {
@@ -152,6 +169,12 @@ function absolutePath(workspaceRoot: string | undefined, path: string): string {
   return path === '' ? root : `${root}${separator}${path.split('/').join(separator)}`
 }
 
+/** The directory holding a workspace path; `''` at the workspace root. */
+function parentOf(path: string): string {
+  const cut = path.lastIndexOf('/')
+  return cut === -1 ? '' : path.slice(0, cut)
+}
+
 /** The directory a new entry goes into for a row: the row itself, or its parent for a file. */
 function createParent(row: Row): string {
   if (row.type !== 'directory') {
@@ -166,13 +189,18 @@ function createParent(row: Row): string {
  * @param props - owner Session, locale, and the filesystem actions.
  */
 export function WorkspaceFileTree({
-  sessionId, workspaceRoot, t, listDirectory, createFile, createDirectory, openFile,
+  sessionId, workspaceRoot, t, listDirectory, createFile, createDirectory, renameEntry, openFile,
 }: WorkspaceFileTreeProps) {
   const [directories, setDirectories] = useState<ReadonlyMap<string, DirectoryState>>(new Map())
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
-  const [request, setRequest] = useState<CreateRequest | null>(null)
+  /** This section's own fold: the Files level inside a Workspace. */
+  const [open, setOpen] = useState(true)
+  /** The two dismissible surfaces, so an outside-press check can exempt them. */
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const promptRef = useRef<HTMLDivElement | null>(null)
+  const [request, setRequest] = useState<NameRequest | null>(null)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -213,6 +241,8 @@ export function WorkspaceFileTree({
   }, [load])
 
   const rows = useMemo(() => flatten(directories, expanded), [directories, expanded])
+  /** Folding this section empties its rows, the same way folding a group does. */
+  const shown = open ? rows : []
 
   const toggle = useCallback((path: string): void => {
     setExpanded((current) => {
@@ -226,16 +256,24 @@ export function WorkspaceFileTree({
     })
   }, [directories, load])
 
-  // A menu or prompt closes on any outside click or Escape, so neither can be
-  // left stranded over a tree the user has moved on from.
+  // A menu or prompt closes on an outside press or Escape, so neither can be left
+  // stranded over a tree the user has moved on from. A press INSIDE either one is
+  // the user acting on it: dismissing on that press would unmount the surface
+  // before the click reached the button, so every item would do nothing.
   useEffect(() => {
     if (menu === null && request === null) return
     const close = (): void => { setMenu(null); setRequest(null) }
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (target instanceof Node
+        && (menuRef.current?.contains(target) === true || promptRef.current?.contains(target) === true)) return
+      close()
+    }
     const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') close() }
-    document.addEventListener('pointerdown', close)
+    document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKey)
     }
   }, [menu, request])
@@ -247,11 +285,19 @@ export function WorkspaceFileTree({
     setMenu(null)
   }, [t])
 
-  const beginCreate = useCallback((next: CreateRequest): void => {
+  const beginCreate = useCallback((next: NameRequest): void => {
     setMenu(null)
     setDraft('')
     setNotice(null)
     setRequest(next)
+  }, [])
+
+  /** Open the name editor on an existing row, on the text being replaced. */
+  const beginRename = useCallback((row: Row): void => {
+    setMenu(null)
+    setNotice(null)
+    setDraft(row.name)
+    setRequest({ kind: 'rename', path: row.path, name: row.name })
   }, [])
 
   // Re-read every directory the tree has already listed, so the refresh control
@@ -264,9 +310,18 @@ export function WorkspaceFileTree({
     if (request === null) return
     const name = draft.trim()
     if (name === '') return
-    const path = childPath(request.parent, name)
     setBusy(true)
     try {
+      if (request.kind === 'rename') {
+        if (renameEntry === undefined) return
+        await renameEntry(sessionId, request.path, name, lifetime.current.signal)
+        setNotice(t('files.renamed', { name }))
+        setRequest(null)
+        // The holding directory's cached listing now holds the old name.
+        await load(parentOf(request.path), lifetime.current.signal)
+        return
+      }
+      const path = childPath(request.parent, name)
       if (request.kind === 'file') await createFile(sessionId, path, '', lifetime.current.signal)
       else await createDirectory(sessionId, path, lifetime.current.signal)
       setNotice(t('files.created', { name }))
@@ -285,7 +340,7 @@ export function WorkspaceFileTree({
     } finally {
       setBusy(false)
     }
-  }, [createDirectory, createFile, draft, load, request, sessionId, t])
+  }, [createDirectory, createFile, draft, load, renameEntry, request, sessionId, t])
 
   if (rootState === undefined || rootState.status === 'loading') {
     return <div className={css.state} role="status">{t('files.loading')}</div>
@@ -302,43 +357,58 @@ export function WorkspaceFileTree({
   }
   return (
     <div className={css.root}>
-      {/* The tree's own title bar, always present. Without it an empty Workspace
-          offers no row to right-click, so its root is not reachable at all —
-          which is exactly how a folder could not be created. */}
-      <div className={css.toolbar}>
+      {/* The section's heading and the tree's title bar in one row: the
+          disclosure control and the three actions share it, so the label reads
+          as the title of the actions beside it. Always drawn — without it an
+          empty Workspace offers no row to right-click, so its root would be
+          unreachable, which is how a folder could not be created. */}
+      <div className={css.header}>
         <button
           type="button"
-          className={css.toolbarButton}
-          aria-label={t('files.newFile')}
-          title={t('files.newFile')}
-          onClick={() => { beginCreate({ kind: 'file', parent: '' }) }}
+          className={css.headerToggle}
+          aria-expanded={open}
+          onClick={() => { setOpen(current => !current) }}
         >
-          <IconPlusOutlineRegular size={14} />
+          {open
+            ? <IconChevronDownOutlineRegular size={12} />
+            : <IconChevronRightOutlineRegular size={12} />}
+          <span>{t('section.files')}</span>
         </button>
-        <button
-          type="button"
-          className={css.toolbarButton}
-          aria-label={t('files.newFolder')}
-          title={t('files.newFolder')}
-          onClick={() => { beginCreate({ kind: 'directory', parent: '' }) }}
-        >
-          <IconProjectAddOutlineRegular size={14} />
-        </button>
-        <button
-          type="button"
-          className={css.toolbarButton}
-          aria-label={t('files.refresh')}
-          title={t('files.refresh')}
-          onClick={reloadAll}
-        >
-          <IconRefreshOutlineRegular size={14} />
-        </button>
+        <span className={css.headerActions}>
+          <button
+            type="button"
+            className={css.toolbarButton}
+            aria-label={t('files.newFile')}
+            title={t('files.newFile')}
+            onClick={() => { beginCreate({ kind: 'file', parent: '' }) }}
+          >
+            <IconPlusOutlineRegular size={14} />
+          </button>
+          <button
+            type="button"
+            className={css.toolbarButton}
+            aria-label={t('files.newFolder')}
+            title={t('files.newFolder')}
+            onClick={() => { beginCreate({ kind: 'directory', parent: '' }) }}
+          >
+            <IconProjectAddOutlineRegular size={14} />
+          </button>
+          <button
+            type="button"
+            className={css.toolbarButton}
+            aria-label={t('files.refresh')}
+            title={t('files.refresh')}
+            onClick={reloadAll}
+          >
+            <IconRefreshOutlineRegular size={14} />
+          </button>
+        </span>
       </div>
 
-      {rows.length === 0 && request === null && <div className={css.state}>{t('files.empty')}</div>}
+      {open && shown.length === 0 && request === null && <div className={css.state}>{t('files.empty')}</div>}
 
       <div className={css.rows} role="tree" aria-label={t('section.files')}>
-        {rows.map((row) => {
+        {shown.map((row) => {
           const open = expanded.has(row.path)
           const directory = row.type === 'directory'
           return (
@@ -428,12 +498,14 @@ export function WorkspaceFileTree({
       </div>
 
       {request !== null && (
-        <div className={css.prompt}>
+        <div className={css.prompt} ref={promptRef}>
           <input
             className={css.input}
             autoFocus
             value={draft}
-            aria-label={request.kind === 'file' ? t('files.createFile.title') : t('files.createFolder.title')}
+            aria-label={request.kind === 'rename'
+              ? t('files.rename')
+              : request.kind === 'file' ? t('files.createFile.title') : t('files.createFolder.title')}
             placeholder={t('files.name.placeholder')}
             disabled={busy}
             onChange={(event) => { setDraft(event.target.value); setNotice(null) }}
@@ -442,7 +514,7 @@ export function WorkspaceFileTree({
             }}
           />
           <button type="button" className={css.promptAction} disabled={busy || draft.trim() === ''} onClick={() => { void submitCreate() }}>
-            {t('files.create')}
+            {request.kind === 'rename' ? t('files.rename') : t('files.create')}
           </button>
           <button type="button" className={css.promptAction} disabled={busy} onClick={() => { setRequest(null) }}>
             {t('files.cancel')}
@@ -453,7 +525,7 @@ export function WorkspaceFileTree({
       {notice !== null && <div className={css.notice} role="status">{notice}</div>}
 
       {menu !== null && (
-        <div className={css.menu} role="menu" style={{ left: menu.left, top: menu.top }}>
+        <div className={css.menu} role="menu" ref={menuRef} style={{ left: menu.left, top: menu.top }}>
           {menu.row.type !== 'directory' && openFile !== undefined && (
             <button
               type="button"
@@ -480,6 +552,16 @@ export function WorkspaceFileTree({
           >
             {t('files.copyAbsolutePath')}
           </button>
+          {renameEntry !== undefined && (
+            <button
+              type="button"
+              role="menuitem"
+              className={css.menuItem}
+              onClick={() => { beginRename(menu.row) }}
+            >
+              {t('files.rename')}
+            </button>
+          )}
           <div className={css.menuSeparator} role="separator" />
           <button
             type="button"

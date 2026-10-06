@@ -1,8 +1,9 @@
 /**
- * The `createFile` and `createDirectory` endpoints: the namespace's only
- * mutations. Both are create-if-absent and workspace-scoped, so every case here
- * checks either that the tree gained exactly the requested entry or that the
- * call was refused without touching what was already there.
+ * The `createFile`, `createDirectory` and `renameEntry` endpoints: the
+ * namespace's only mutations. The creates are create-if-absent and a rename
+ * changes one segment, so every case here checks either that the tree gained
+ * exactly the requested entry or that the call was refused without touching what
+ * was already there.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
@@ -111,5 +112,53 @@ describe('workspaceFiles.createDirectory', () => {
   it('refuses an empty path before resolving anything', async () => {
     const failure = await failureOf(harness.endpoint().createDirectory(harness.scope, '', signal()))
     expect(failure.code).toBe('gateway/bad-request')
+  })
+})
+
+describe('workspaceFiles.renameEntry', () => {
+  it('renames an entry inside its own directory, keeping its content', async () => {
+    await mkdir(join(workspace, 'docs'))
+    await writeFile(join(workspace, 'docs', 'before.md'), 'body', 'utf8')
+    const renamed = await harness.endpoint().renameEntry(harness.scope, 'docs/before.md', 'after.md', signal())
+    expect(renamed.absolutePath).toBe(await resolved(join(workspace, 'docs', 'after.md')))
+    expect(await readFile(join(workspace, 'docs', 'after.md'), 'utf8')).toBe('body')
+    await expect(stat(join(workspace, 'docs', 'before.md'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('renames a directory with its contents', async () => {
+    await mkdir(join(workspace, 'old'))
+    await writeFile(join(workspace, 'old', 'inner.md'), 'inner', 'utf8')
+    await harness.endpoint().renameEntry(harness.scope, 'old', 'new', signal())
+    expect(await readFile(join(workspace, 'new', 'inner.md'), 'utf8')).toBe('inner')
+  })
+
+  it('refuses a name that is not a single path segment', async () => {
+    await writeFile(join(workspace, 'a.md'), 'x', 'utf8')
+    for (const name of ['sub/a.md', 'sub\\a.md', '', '..']) {
+      const failure = await failureOf(harness.endpoint().renameEntry(harness.scope, 'a.md', name, signal()))
+      expect(failure.code).toBe('gateway/bad-request')
+    }
+    expect(await readFile(join(workspace, 'a.md'), 'utf8')).toBe('x')
+  })
+
+  it('refuses an occupied destination, leaving both entries alone', async () => {
+    await writeFile(join(workspace, 'a.md'), 'A', 'utf8')
+    await writeFile(join(workspace, 'b.md'), 'B', 'utf8')
+    const failure = await failureOf(harness.endpoint().renameEntry(harness.scope, 'a.md', 'b.md', signal()))
+    expect(failure.code).toBe('workspace-file/already-exists')
+    expect(await readFile(join(workspace, 'a.md'), 'utf8')).toBe('A')
+    expect(await readFile(join(workspace, 'b.md'), 'utf8')).toBe('B')
+  })
+
+  it('refuses a source that is not there', async () => {
+    const failure = await failureOf(harness.endpoint().renameEntry(harness.scope, 'absent.md', 'next.md', signal()))
+    expect(failure.code).toBe('workspace-file/not-found')
+  })
+
+  it('refuses an entry outside the workspace', async () => {
+    const failure = await failureOf(
+      harness.endpoint().renameEntry(harness.scope, join(outside, 'escape.md'), 'next.md', signal()),
+    )
+    expect(failure.code).toBe('workspace-file/outside-workspace')
   })
 })

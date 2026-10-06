@@ -439,7 +439,6 @@ function SessionTree({
     // collapsing the Workspace itself does, so one gate drives the rows and the
     // overflow control together.
     const sessionsOpen = !collapsedLevels.has(`${group.key}:sessions`)
-    const filesOpen = !collapsedLevels.has(`${group.key}:files`)
     const sessions = sessionsOpen ? visible.rows : []
     // This Workspace's own file scope: a Session of THIS Workspace, whose header
     // supplies the very root the group is named after. It reads the GROUP's
@@ -638,27 +637,13 @@ function SessionTree({
               : t('sessions.expand', { n: visible.hiddenCount })}
           </button>
         )}
-        {/* The Workspace's second level: that Workspace's own files, folded by
-            its own heading rather than by a region-wide one. */}
+        {/* The Workspace's second level. Its own component owns the whole
+            section — heading, fold and actions — so the label and those actions
+            share one row; the region only decides whether it belongs here. */}
         {group.expanded && fileScope !== undefined && (
-          <>
-            <button
-              type="button"
-              className={css.groupLevel}
-              aria-expanded={filesOpen}
-              onClick={() => { toggleLevel(`${group.key}:files`) }}
-            >
-              {filesOpen
-                ? <IconChevronDownOutlineRegular size={12} />
-                : <IconChevronRightOutlineRegular size={12} />}
-              <span>{t('section.files')}</span>
-            </button>
-            {filesOpen && (
-              <div className={css.groupFiles}>
-                {renderSlot('sidebar.workspaces.files', { sessionId: fileScope, workspaceRoot: group.cwd })}
-              </div>
-            )}
-          </>
+          <div className={css.groupFiles}>
+            {renderSlot('sidebar.workspaces.files', { sessionId: fileScope, workspaceRoot: group.cwd })}
+          </div>
         )}
       </div>
     )

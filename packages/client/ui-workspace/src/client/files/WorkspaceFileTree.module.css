@@ -30,6 +30,7 @@
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  transition: background-color 120ms var(--ds-ease-in-out);
 }
 
 /* Indentation is carried by the rails themselves, so a name's column follows
@@ -50,15 +51,45 @@
   background: var(--dsw-alias-interactive-bg-selected, var(--dsw-alias-interactive-bg-hover));
 }
 
-/* The tree's own title bar, above the rows. Always drawn: an empty Workspace
-   offers no row to act on, so its root needs a control of its own. */
-.toolbar {
+/* The section's heading and the tree's title bar in one row: the fold control on
+   the left, the three actions on the right, sharing the row so the label reads as
+   the title of the actions beside it. */
+.header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 2px;
   height: 24px;
   padding-right: 2px;
+}
+
+.headerToggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-caption);
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms var(--ds-ease-in-out);
+}
+
+.headerToggle:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.headerActions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .toolbarButton {
@@ -74,6 +105,7 @@
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
+  transition: background-color 120ms var(--ds-ease-in-out), color 120ms var(--ds-ease-in-out);
 }
 
 .toolbarButton:hover {
@@ -88,7 +120,7 @@
   align-items: center;
   gap: 2px;
   opacity: 0;
-  transition: opacity 100ms var(--ds-ease-in-out);
+  transition: opacity 120ms var(--ds-ease-in-out);
 }
 
 .row:hover .rowActions,

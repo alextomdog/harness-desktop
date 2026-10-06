@@ -282,6 +282,10 @@ export function apply(ctx: Context): void {
       const result = await ctx.remote.workspaceFiles.createDirectory(sessionId, path, signal)
       if (!result.ok) throw result.error
     },
+    renameEntry: async (sessionId, path, name, signal) => {
+      const result = await ctx.remote.workspaceFiles.renameEntry(sessionId, path, name, signal)
+      if (!result.ok) throw result.error
+    },
     // A workspace-relative path is enough: the Host resolves it against the
     // Session's own root, and the built-in viewers claim the address by type.
     openFile: (sessionId, path) => {
