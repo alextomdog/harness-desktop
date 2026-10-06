@@ -201,6 +201,11 @@ export function WorkspaceFileTree({
   const menuRef = useRef<HTMLDivElement | null>(null)
   const promptRef = useRef<HTMLDivElement | null>(null)
   const [request, setRequest] = useState<NameRequest | null>(null)
+  /**
+   * Set once an inline edit has committed or been cancelled, so the blur that
+   * follows its own unmount does not commit a second time.
+   */
+  const nameSettled = useRef(false)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -243,6 +248,8 @@ export function WorkspaceFileTree({
   const rows = useMemo(() => flatten(directories, expanded), [directories, expanded])
   /** Folding this section empties its rows, the same way folding a group does. */
   const shown = open ? rows : []
+  /** The row the inline name editor replaces, when one is open in place. */
+  const renaming = request?.kind === 'rename' ? request.path : null
 
   const toggle = useCallback((path: string): void => {
     setExpanded((current) => {
@@ -296,6 +303,7 @@ export function WorkspaceFileTree({
   const beginRename = useCallback((row: Row): void => {
     setMenu(null)
     setNotice(null)
+    nameSettled.current = false
     setDraft(row.name)
     setRequest({ kind: 'rename', path: row.path, name: row.name })
   }, [])
@@ -433,6 +441,12 @@ export function WorkspaceFileTree({
                 else openFile?.(sessionId, row.path)
               }}
               onKeyDown={(event) => {
+                // F2 is the editor's rename gesture; the row acts on its own.
+                if (event.key === 'F2') {
+                  event.preventDefault()
+                  beginRename(row)
+                  return
+                }
                 if (event.key !== 'Enter' && event.key !== ' ') return
                 event.preventDefault()
                 setSelected(row.path)
@@ -460,7 +474,45 @@ export function WorkspaceFileTree({
                     : <IconFolderCloseRegular size={15} />)
                   : <FileTypeIcon kind={classifyFileType(row.name)} size={15} />}
               </span>
-              <span className={css.name}>{row.name}</span>
+              {/* The rename editor replaces the name in its own row, at that
+                  row's indent and beside its glyph — the editor's own gesture,
+                  not a separate field below the tree. */}
+              {renaming === row.path
+                ? (
+                  <input
+                    className={css.nameInput}
+                    autoFocus
+                    value={draft}
+                    aria-label={t('files.rename')}
+                    disabled={busy}
+                    onChange={(event) => { setDraft(event.target.value); setNotice(null) }}
+                    onFocus={(event) => { event.target.select() }}
+                    onClick={(event) => { event.stopPropagation() }}
+                    onKeyDown={(event) => {
+                      // Keep the row's own keys (Enter opens, Space toggles) out
+                      // of the editor's typing.
+                      event.stopPropagation()
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        nameSettled.current = true
+                        void submitCreate()
+                      }
+                      if (event.key === 'Escape') {
+                        event.preventDefault()
+                        nameSettled.current = true
+                        setRequest(null)
+                      }
+                    }}
+                    onBlur={() => {
+                      // Committing on blur is the editor's gesture; the guard
+                      // keeps the unmount that follows a commit from repeating it.
+                      if (nameSettled.current) return
+                      nameSettled.current = true
+                      void submitCreate()
+                    }}
+                  />
+                )
+                : <span className={css.name}>{row.name}</span>}
               {directories.get(row.path)?.status === 'loading' && <span className={css.rowStatus} aria-hidden="true" />}
               {/* The Explorer puts its two creates on the folder row itself; they
                   stay out of the pointer's way until the row is hovered. */}
@@ -497,15 +549,14 @@ export function WorkspaceFileTree({
         })}
       </div>
 
-      {request !== null && (
+      {/* Only a create needs this row: a rename edits in place, in its own row. */}
+      {request !== null && request.kind !== 'rename' && (
         <div className={css.prompt} ref={promptRef}>
           <input
             className={css.input}
             autoFocus
             value={draft}
-            aria-label={request.kind === 'rename'
-              ? t('files.rename')
-              : request.kind === 'file' ? t('files.createFile.title') : t('files.createFolder.title')}
+            aria-label={request.kind === 'file' ? t('files.createFile.title') : t('files.createFolder.title')}
             placeholder={t('files.name.placeholder')}
             disabled={busy}
             onChange={(event) => { setDraft(event.target.value); setNotice(null) }}
@@ -514,7 +565,7 @@ export function WorkspaceFileTree({
             }}
           />
           <button type="button" className={css.promptAction} disabled={busy || draft.trim() === ''} onClick={() => { void submitCreate() }}>
-            {request.kind === 'rename' ? t('files.rename') : t('files.create')}
+            {t('files.create')}
           </button>
           <button type="button" className={css.promptAction} disabled={busy} onClick={() => { setRequest(null) }}>
             {t('files.cancel')}

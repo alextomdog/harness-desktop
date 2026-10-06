@@ -247,10 +247,13 @@ describe('WorkspaceFileTree', () => {
     fireEvent.contextMenu(await screen.findByText('old.md'))
     fireEvent.click(screen.getByText('files.rename'))
 
+    // The editor replaces the name IN that row, seeded with the current name.
     const input = screen.getByLabelText('files.rename') as HTMLInputElement
     expect(input.value).toBe('old.md')
+    expect(input.closest('[role="treeitem"]')).not.toBeNull()
+
     fireEvent.change(input, { target: { value: 'new.md' } })
-    fireEvent.click(screen.getByText('files.rename'))
+    fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => {
       expect(renameEntry).toHaveBeenCalledWith(sessionId, 'old.md', 'new.md', expect.anything())
@@ -258,6 +261,24 @@ describe('WorkspaceFileTree', () => {
     expect(await screen.findByText('files.renamed:{"name":"new.md"}')).toBeTruthy()
     // The holding directory is reloaded, so the old name cannot linger.
     expect(listDirectory).toHaveBeenCalledWith(sessionId, '.', expect.anything())
+  })
+
+  it('opens the in-place editor on F2 and drops it on Escape without renaming', async () => {
+    const renameEntry = vi.fn(async () => {})
+    const listDirectory = listingSource({
+      '.': { path: '', truncated: false, entries: [{ name: 'a.md', type: 'file' }] },
+    })
+    mount({ renameEntry, listDirectory })
+
+    const row = (await screen.findByText('a.md')).closest('[role="treeitem"]') as HTMLElement
+    fireEvent.keyDown(row, { key: 'F2' })
+    const input = screen.getByLabelText('files.rename') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'b.md' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(screen.queryByLabelText('files.rename')).toBeNull()
+    expect(renameEntry).not.toHaveBeenCalled()
+    expect(screen.getByText('a.md')).toBeTruthy()
   })
 
   it('copies a row relative and absolute path', async () => {

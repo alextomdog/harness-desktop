@@ -188,6 +188,22 @@
   text-overflow: ellipsis;
 }
 
+/* The in-place rename editor: the row's own name cell, so it sits at that row's
+   indent beside its glyph instead of in a field below the tree. */
+.nameInput {
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  margin: 0;
+  padding: 0 2px;
+  border: 1px solid var(--dsw-alias-state-business-primary);
+  border-radius: 2px;
+  background: var(--dsw-alias-bg-elevated, transparent);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  outline: none;
+}
+
 .rowStatus {
   flex: none;
   width: 6px;
