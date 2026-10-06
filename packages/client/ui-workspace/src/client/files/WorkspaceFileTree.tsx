@@ -124,7 +124,6 @@ interface MenuState {
   readonly top: number
 }
 
-const LOADING: DirectoryState = { status: 'loading', entries: [], truncated: false }
 const ERRORED: DirectoryState = { status: 'error', entries: [], truncated: false }
 
 /** Join a workspace-relative directory and a child name into a workspace path. */
@@ -214,7 +213,13 @@ export function WorkspaceFileTree({
   const lifetime = useRef<AbortController>(new AbortController())
 
   const load = useCallback(async (path: string, signal: AbortSignal): Promise<void> => {
-    setDirectories(current => new Map(current).set(path, LOADING))
+    // Keep the listing already on screen while the reread is in flight: a refresh
+    // or a post-create reload must not blank the tree it is refreshing.
+    setDirectories(current => new Map(current).set(path, {
+      entries: current.get(path)?.entries ?? [],
+      truncated: current.get(path)?.truncated ?? false,
+      status: 'loading',
+    }))
     try {
       // The Host names the workspace root `.` and refuses an empty path, while
       // the tree keeps `''` as its own root key so every row path stays a plain
@@ -285,12 +290,11 @@ export function WorkspaceFileTree({
     }
   }, [menu, request])
 
-  /** Put one path on the clipboard and say so; a refusal is the browser's to report. */
+  /** Put one path on the clipboard; a refusal is the browser's to report. */
   const copyPath = useCallback((text: string): void => {
     void navigator.clipboard.writeText(text).catch(() => {})
-    setNotice(t('files.copied'))
     setMenu(null)
-  }, [t])
+  }, [])
 
   const beginCreate = useCallback((next: NameRequest): void => {
     setMenu(null)
@@ -323,7 +327,6 @@ export function WorkspaceFileTree({
       if (request.kind === 'rename') {
         if (renameEntry === undefined) return
         await renameEntry(sessionId, request.path, name, lifetime.current.signal)
-        setNotice(t('files.renamed', { name }))
         setRequest(null)
         // The holding directory's cached listing now holds the old name.
         await load(parentOf(request.path), lifetime.current.signal)
@@ -332,7 +335,6 @@ export function WorkspaceFileTree({
       const path = childPath(request.parent, name)
       if (request.kind === 'file') await createFile(sessionId, path, '', lifetime.current.signal)
       else await createDirectory(sessionId, path, lifetime.current.signal)
-      setNotice(t('files.created', { name }))
       setRequest(null)
       // The parent's cached listing is now stale; one reload keeps the tree
       // truthful without a watch subscription this section does not own.
@@ -350,7 +352,8 @@ export function WorkspaceFileTree({
     }
   }, [createDirectory, createFile, draft, load, renameEntry, request, sessionId, t])
 
-  if (rootState === undefined || rootState.status === 'loading') {
+  // Only the very first read has nothing to draw; a reread keeps its rows.
+  if (rootState === undefined) {
     return <div className={css.state} role="status">{t('files.loading')}</div>
   }
   if (rootState.status === 'error') {

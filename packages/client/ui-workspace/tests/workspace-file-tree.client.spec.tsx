@@ -99,7 +99,7 @@ describe('WorkspaceFileTree', () => {
     expect(listDirectory).toHaveBeenCalledTimes(2)
   })
 
-  it('creates a file in the row folder from the menu and reports the name', async () => {
+  it('creates a file in the row folder from the menu', async () => {
     const createFile = vi.fn(async () => {})
     const listDirectory = listingSource({
       '.': { path: '', truncated: false, entries: [{ name: 'docs', type: 'directory' }, { name: 'a.md', type: 'file' }] },
@@ -118,9 +118,10 @@ describe('WorkspaceFileTree', () => {
       // The row's own directory is the parent, and the path joins with `/`.
       expect(createFile).toHaveBeenCalledWith(sessionId, 'docs/readme.md', '', expect.anything())
     })
-    expect(await screen.findByText('files.created:{"name":"readme.md"}')).toBeTruthy()
-    // The parent reloads, so the new entry appears without a watch of its own.
+    // The parent reloads, so the new entry appears without a watch of its own,
+    // and no notice line is drawn: the tree is the report.
     expect(listDirectory).toHaveBeenCalledWith(sessionId, 'docs', expect.anything())
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('creates a folder at the workspace root from the tree toolbar', async () => {
@@ -147,7 +148,7 @@ describe('WorkspaceFileTree', () => {
       expect(createDirectory).toHaveBeenCalledWith(sessionId, 'fresh', expect.anything())
     })
     // The new folder is adopted open AND listed, so it does not appear as an open
-    // folder with nothing in it.
+    // folder with nothing in it. No success notice: the tree is the report.
     expect(await screen.findByText('inner.md')).toBeTruthy()
     expect(listDirectory).toHaveBeenCalledWith(sessionId, 'fresh', expect.anything())
   })
@@ -258,9 +259,10 @@ describe('WorkspaceFileTree', () => {
     await waitFor(() => {
       expect(renameEntry).toHaveBeenCalledWith(sessionId, 'old.md', 'new.md', expect.anything())
     })
-    expect(await screen.findByText('files.renamed:{"name":"new.md"}')).toBeTruthy()
-    // The holding directory is reloaded, so the old name cannot linger.
+    // The holding directory is reloaded, so the old name cannot linger; a rename
+    // reports itself through the tree, with no notice line under it.
     expect(listDirectory).toHaveBeenCalledWith(sessionId, '.', expect.anything())
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('opens the in-place editor on F2 and drops it on Escape without renaming', async () => {
