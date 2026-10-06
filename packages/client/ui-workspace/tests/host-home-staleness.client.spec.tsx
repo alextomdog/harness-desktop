@@ -35,7 +35,8 @@ async function bench() {
   runtime.releaseWorkspaceSource()
   const directoryPicker = {}
   const { remote } = runtime
-  remote.provideNamespaces({ directoryPicker })
+  // The plugin's inject waits on the file namespace the tree lists through.
+  remote.provideNamespaces({ directoryPicker, workspaceFiles: { list: vi.fn(), createFile: vi.fn(), createDirectory: vi.fn() } })
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)

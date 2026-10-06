@@ -123,8 +123,16 @@ async function bench() {
   } as never)
   const pickDirectory = vi.fn(() => Promise.resolve({ ok: true as const, value: '/projects/picked' }))
   const directoryPicker = { pick: pickDirectory }
-  Object.assign(new TestRemote(ctx), { directoryPicker })
+  // The file tree lists and creates through this namespace, so the plugin's
+  // inject waits on it; the tree's own spec covers its behavior.
+  const workspaceFiles = {
+    list: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '', entries: [], truncated: false } })),
+    createFile: vi.fn(() => Promise.resolve({ ok: true as const, value: { absolutePath: '', version: 'v1', bytes: 0 } })),
+    createDirectory: vi.fn(() => Promise.resolve({ ok: true as const, value: { absolutePath: '' } })),
+  }
+  Object.assign(new TestRemote(ctx), { directoryPicker, workspaceFiles })
   ctx.provide('remote.directoryPicker', directoryPicker as never)
+  ctx.provide('remote.workspaceFiles', workspaceFiles as never)
   const locale = new LocaleRuntime(ctx)
   // These specs assert the shipped Chinese copy. There is no jsdom `window`
   // in this lane, so browser-language detection never runs and the locale
@@ -184,7 +192,8 @@ describe('ui-workspace apply', () => {
 
   it('declares the services it drives', () => {
     expect(inject).toEqual([
-      'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts',
+      'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker',
+      'remote.workspaceFiles', 'layout', 'shortcuts',
     ])
   })
 
