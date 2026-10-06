@@ -122,6 +122,12 @@ export interface WorkspaceFilesOwnerProps {
    * the root itself is derived on the Host from that Session's header.
    */
   readonly sessionId: SessionId
+  /**
+   * The Workspace's own root path, when the owner knows it. The tree works in
+   * workspace-relative paths, so this is only what lets it compose an absolute
+   * path for the clipboard.
+   */
+  readonly workspaceRoot?: string | undefined
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

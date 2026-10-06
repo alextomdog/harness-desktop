@@ -655,7 +655,7 @@ function SessionTree({
             </button>
             {filesOpen && (
               <div className={css.groupFiles}>
-                {renderSlot('sidebar.workspaces.files', { sessionId: fileScope })}
+                {renderSlot('sidebar.workspaces.files', { sessionId: fileScope, workspaceRoot: group.cwd })}
               </div>
             )}
           </>

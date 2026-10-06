@@ -224,6 +224,28 @@ describe('WorkspaceFileTree', () => {
     expect(screen.getByText('files.retry')).toBeTruthy()
   })
 
+  it('copies a row relative and absolute path', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const listDirectory = listingSource({
+      '.': { path: '', truncated: false, entries: [{ name: 'src', type: 'directory' }] },
+      src: { path: 'src', truncated: false, entries: [{ name: 'a.md', type: 'file' }] },
+    })
+    mount({ listDirectory, workspaceRoot: 'C:\\work\\proj' })
+
+    fireEvent.click(await screen.findByText('src'))
+    const file = await screen.findByText('a.md')
+
+    fireEvent.contextMenu(file)
+    fireEvent.click(screen.getByText('files.copyRelativePath'))
+    expect(writeText).toHaveBeenCalledWith('src/a.md')
+
+    fireEvent.contextMenu(file)
+    fireEvent.click(screen.getByText('files.copyAbsolutePath'))
+    // Composed in the root's own separator style, not the tree's.
+    expect(writeText).toHaveBeenCalledWith('C:\\work\\proj\\src\\a.md')
+  })
+
   it('offers the open item only when a composition supplies an opener', async () => {
     const listing: WorkspaceTreeListing = { path: '', truncated: false, entries: [{ name: 'a.md', type: 'file' }] }
     const listDirectory = listingSource({ '.': listing })

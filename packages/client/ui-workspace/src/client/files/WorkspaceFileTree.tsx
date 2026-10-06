@@ -18,7 +18,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular,
+  classifyFileType, FileTypeIcon,
+  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular,
   IconFolderCloseRegular, IconFolderOpenRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconRefreshOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -63,7 +64,15 @@ export interface WorkspaceFileTreeInjected {
 
 /** Props of the file-tree entry: the owner share, the locale seat, and its actions. */
 export type WorkspaceFileTreeProps =
-  & { readonly sessionId: SessionId }
+  & {
+    readonly sessionId: SessionId
+    /**
+     * The Workspace's own root, when the owner knows it. The tree addresses the
+     * Host by workspace-relative path, so only the clipboard needs the absolute
+     * form composed here.
+     */
+    readonly workspaceRoot?: string | undefined
+  }
   & PropsLocale<'workspace'>
   & WorkspaceFileTreeInjected
 
@@ -135,6 +144,14 @@ function orderEntries(entries: readonly WorkspaceTreeEntry[]): readonly Workspac
   return [...entries].sort((a, b) => group(a) - group(b) || a.name.localeCompare(b.name))
 }
 
+/** Join a workspace-relative path to its root, in that root's own separator style. */
+function absolutePath(workspaceRoot: string | undefined, path: string): string {
+  if (workspaceRoot === undefined || workspaceRoot === '') return path
+  const separator = workspaceRoot.includes('\\') ? '\\' : '/'
+  const root = workspaceRoot.replace(/[\\/]+$/u, '')
+  return path === '' ? root : `${root}${separator}${path.split('/').join(separator)}`
+}
+
 /** The directory a new entry goes into for a row: the row itself, or its parent for a file. */
 function createParent(row: Row): string {
   if (row.type !== 'directory') {
@@ -149,7 +166,7 @@ function createParent(row: Row): string {
  * @param props - owner Session, locale, and the filesystem actions.
  */
 export function WorkspaceFileTree({
-  sessionId, t, listDirectory, createFile, createDirectory, openFile,
+  sessionId, workspaceRoot, t, listDirectory, createFile, createDirectory, openFile,
 }: WorkspaceFileTreeProps) {
   const [directories, setDirectories] = useState<ReadonlyMap<string, DirectoryState>>(new Map())
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
@@ -222,6 +239,13 @@ export function WorkspaceFileTree({
       document.removeEventListener('keydown', onKey)
     }
   }, [menu, request])
+
+  /** Put one path on the clipboard and say so; a refusal is the browser's to report. */
+  const copyPath = useCallback((text: string): void => {
+    void navigator.clipboard.writeText(text).catch(() => {})
+    setNotice(t('files.copied'))
+    setMenu(null)
+  }, [t])
 
   const beginCreate = useCallback((next: CreateRequest): void => {
     setMenu(null)
@@ -364,7 +388,7 @@ export function WorkspaceFileTree({
                   ? (open
                     ? <IconFolderOpenRegular size={15} />
                     : <IconFolderCloseRegular size={15} />)
-                  : <IconCodeOutlineRegular size={15} />}
+                  : <FileTypeIcon kind={classifyFileType(row.name)} size={15} />}
               </span>
               <span className={css.name}>{row.name}</span>
               {directories.get(row.path)?.status === 'loading' && <span className={css.rowStatus} aria-hidden="true" />}
@@ -444,9 +468,17 @@ export function WorkspaceFileTree({
             type="button"
             role="menuitem"
             className={css.menuItem}
-            onClick={() => { void navigator.clipboard.writeText(menu.row.path); setNotice(t('files.copied')); setMenu(null) }}
+            onClick={() => { copyPath(menu.row.path) }}
           >
-            {t('files.copyPath')}
+            {t('files.copyRelativePath')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={css.menuItem}
+            onClick={() => { copyPath(absolutePath(workspaceRoot, menu.row.path)) }}
+          >
+            {t('files.copyAbsolutePath')}
           </button>
           <div className={css.menuSeparator} role="separator" />
           <button
