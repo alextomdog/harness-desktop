@@ -289,3 +289,14 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* The unsaved-work dot: the chip's own mark, as an editor draws it. */
+.dirtyDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.65;
+}

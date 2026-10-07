@@ -40,6 +40,9 @@ export const zh = {
   'edit.keepMine': '保留我的修改',
   'edit.useDisk': '改用文件现有内容',
   'edit.failed': '保存失败：',
+  'edit.preview': '预览',
+  'edit.hint': 'Ctrl + S 保存',
+  'edit.dirty': '有未保存的修改',
 } satisfies Record<string, string>
 
 /** Text-preview dictionary key union. */
@@ -79,4 +82,7 @@ export const en = {
   'edit.keepMine': 'Keep mine',
   'edit.useDisk': 'Use the file as it is',
   'edit.failed': 'Save failed: ',
+  'edit.preview': 'Preview',
+  'edit.hint': 'Ctrl + S to save',
+  'edit.dirty': 'Unsaved changes',
 } satisfies Record<SidebarDocumentPreviewKey, string>

@@ -90,7 +90,9 @@ describe('ui-sidebar-documentpreview apply', () => {
     // take the kind over, and the seat must still find this body.
     expect(registered.map(entry => [entry.name, entry.key, entry.locale, entry.component])).toEqual([
       ['sidebar.right.pane.tab', TEXTPREVIEW_ID, 'sidebarDocumentPreview', TextPreview],
-      ['sidebar.right.pane.tab.title', TEXTPREVIEW_ID, undefined, TextTitle],
+      // The title carries the locale and the store too: the unsaved dot it draws
+      // is one fact about the tab, read from the same store the body writes.
+      ['sidebar.right.pane.tab.title', TEXTPREVIEW_ID, 'sidebarDocumentPreview', TextTitle],
       ['sidebar.right.tab.document', PLAIN_BODY_ID, undefined, TextBody],
       ['sidebar.right.tab.document', MARKDOWN_BODY_ID, 'documentMarkdown', MarkdownBody],
       ['sidebar.right.tab.document', HTML_BODY_ID, 'documentHtml', HtmlBody],

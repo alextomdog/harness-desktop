@@ -328,7 +328,7 @@ export function TextPreview({
           </Tooltip>
         </span>
         {editableText !== undefined && (
-          <Tooltip label={t('edit.tool')} side="bottom" delayMs={500}>
+          <Tooltip label={t(editing ? 'edit.stop' : 'edit.start')} side="bottom" delayMs={500}>
             <button
               type="button"
               className={css.tool}
@@ -381,11 +381,12 @@ export function TextPreview({
             text={editableText}
             version={current?.version ?? ''}
             reload={reload}
+            onDirty={(dirty) => { actions.dirtied(tab.id, dirty) }}
             save={(value, expectedVersion, signal) => save(file, value, expectedVersion, signal)}
             labels={{
               saving: t('edit.saving'), saved: t('edit.saved'), stale: t('edit.stale'),
               keepMine: t('edit.keepMine'), useDisk: t('edit.useDisk'), failed: t('edit.failed'),
-              editAria: t('edit.aria'),
+              editAria: t('edit.aria'), saveHint: t('edit.hint'),
             }}
           />
         )}

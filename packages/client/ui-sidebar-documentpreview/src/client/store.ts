@@ -61,6 +61,8 @@ export interface TextTabState {
   wrap: boolean
   /** The `navigation.revision` the body already answered; absent before the first. */
   revision: number | undefined
+  /** The reader holds edits the file does not: what the chip's dot marks. */
+  dirty: boolean
 }
 
 /** Every tab's state, keyed by tab id. */
@@ -86,6 +88,7 @@ export function fresh(): TextTabState {
     scrollTop: 0,
     wrap: true,
     revision: undefined,
+    dirty: false,
   }
 }
 
@@ -109,6 +112,7 @@ type TextActions = {
   scrolled: (draft: TextState, tabId: TabId, scrollTop: number) => void
   toggledWrap: (draft: TextState, tabId: TabId) => void
   navigated: (draft: TextState, tabId: TabId, revision: number) => void
+  dirtied: (draft: TextState, tabId: TabId, dirty: boolean) => void
   forget: (draft: TextState, tabId: TabId) => void
 }
 
@@ -128,6 +132,15 @@ export function createTextStore(): EngineStoreHandle<TextState, TextActions> {
         state.autoRefresh = !state.autoRefresh
       },
       resourceChanged: (d, tabId: TabId) => { bucket(d, tabId).resourcesDirty = true },
+      /**
+       * Mark the tab as holding edits the file does not, or as clean again. The
+       * chip's dot reads this, so it lives here rather than in the editor: the
+       * title and the body are two registrations over one store.
+       * @param d - draft state.
+       * @param tabId - owning tab.
+       * @param dirty - whether unsaved edits remain.
+       */
+      dirtied: (d, tabId: TabId, dirty: boolean) => { bucket(d, tabId).dirty = dirty },
       /** @param d - draft. @param tabId - owning tab. @param rendererId - manual choice, or automatic selection. */
       selected: (d, tabId: TabId, rendererId: string | undefined) => {
         if (rendererId === undefined) delete bucket(d, tabId).rendererId

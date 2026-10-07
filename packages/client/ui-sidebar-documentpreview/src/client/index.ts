@@ -119,7 +119,9 @@ export function apply(ctx: ClientContext): void {
     TextPreview,
   )), 'ui-sidebar-documentpreview: text body')
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register(
-    { name: 'sidebar.right.pane.tab.title', key: TEXTPREVIEW_ID },
+    // The title reads the same store the body writes, so the unsaved dot is one
+    // fact about the tab rather than two components guessing at each other.
+    { name: 'sidebar.right.pane.tab.title', key: TEXTPREVIEW_ID, locale: NS, store },
     TextTitle,
   )), 'ui-sidebar-documentpreview: text title')
   registerText(ctx)

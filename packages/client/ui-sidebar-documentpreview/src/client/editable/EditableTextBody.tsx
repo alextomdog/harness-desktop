@@ -1,22 +1,22 @@
 /**
  * The editor: one text file the reader owns while its tab is open.
  *
- * The buffer starts from the text the tab read and carries that read's version as
- * its basis, so a save can be REFUSED rather than overwrite a change the reader
- * never saw — the agent writing the same file, another window, another surface.
- * A refusal stops the timer and asks which side wins instead of guessing.
+ * Saving is the READER's, not the clock's. Typing marks the tab dirty — the chip
+ * grows the dot an editor shows — and Ctrl+S (or Cmd+S) writes the buffer under
+ * the version the tab read. Nothing is written until then, so a file being edited
+ * is never half-saved behind the reader's back.
  *
- * Only a file whose content arrived whole is handed here at all: a save writes
- * the entire buffer, so a partially loaded one would truncate everything past
- * what was read. The caller enforces that; this component assumes it.
+ * A file written underneath the reader in the meantime is REFUSED rather than
+ * overwritten: their words stay on screen and the two sides are offered, because
+ * an editor that guesses would silently discard one of them.
+ *
+ * Only a file whose content arrived whole is handed here at all: a save writes the
+ * entire buffer, so a partially loaded one would truncate everything past what was
+ * read. The caller enforces that; this component assumes it.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { WriteWorkspaceFileOutcome } from '../rpc.ts'
 import css from './EditableTextBody.module.css'
-
-/** How long typing rests before a save is sent. */
-const SAVE_DEBOUNCE_MS = 600
 
 /** What the editor is telling the reader about its last save. */
 type SaveState = 'clean' | 'saving' | 'saved' | 'stale' | 'failed'
@@ -31,6 +31,8 @@ export interface EditableTextLabels {
   readonly failed: string
   /** The textarea's accessible name. */
   readonly editAria: string
+  /** The hint that names the save key. */
+  readonly saveHint: string
 }
 
 export interface EditableTextBodyProps {
@@ -42,6 +44,8 @@ export interface EditableTextBodyProps {
   readonly save: (content: string, expectedVersion: string, signal: AbortSignal) => Promise<WriteWorkspaceFileOutcome>
   /** Ask the Host for the file again, after a refusal or an external write. */
   readonly reload: () => void
+  /** Report whether unsaved edits remain, for the chip's dot. */
+  readonly onDirty: (dirty: boolean) => void
   readonly labels: EditableTextLabels
 }
 
@@ -49,16 +53,19 @@ export interface EditableTextBodyProps {
  * @param props - the read text, its version, the save, the reload, and copy.
  * @returns the textarea, its save state, and the conflict's two choices.
  */
-export function EditableTextBody({ text, version, save, reload, labels }: EditableTextBodyProps): ReactNode {
+export function EditableTextBody({ text, version, save, reload, onDirty, labels }: EditableTextBodyProps): ReactNode {
   const [buffer, setBuffer] = useState(text)
   const [state, setState] = useState<SaveState>('clean')
   const [message, setMessage] = useState('')
-  // The textarea's own value is the truth for the timer, and the reader's
-  // keystrokes must not be read through a stale render.
+  // What the FILE holds, as far as this editor knows: the text it was read from,
+  // then whatever a save wrote. The dot is the buffer's difference from it, which
+  // is why the two live together.
+  const [savedText, setSavedText] = useState(text)
+  // The textarea's own value is the truth for a save, and the reader's keystrokes
+  // must not be read through a stale render.
   const bufferRef = useRef(buffer)
   bufferRef.current = buffer
   const basisRef = useRef(version)
-  const diskRef = useRef(text)
   // Set by "keep mine": the next text to arrive is the basis for a re-save rather
   // than a version to adopt.
   const resaveRef = useRef(false)
@@ -68,24 +75,35 @@ export function EditableTextBody({ text, version, save, reload, labels }: Editab
   // touched buffer does not: those keystrokes outrank it, and the conflict line
   // is what asks which side wins.
   useEffect(() => {
-    const untouched = bufferRef.current === diskRef.current
-    diskRef.current = text
+    const untouched = bufferRef.current === savedText
     basisRef.current = version
     if (untouched) {
       setBuffer(text)
-      setState('clean')
+      setSavedText(text)
+      setState(current => (current === 'stale' ? 'clean' : current))
       return
     }
     setState('stale')
-  }, [text, version])
+  }, [text, version, savedText])
+
+  // The dot follows the buffer, not the clock: any difference from what the file
+  // holds is unsaved work, and a save clears it.
+  useEffect(() => {
+    onDirty(buffer !== savedText)
+  }, [buffer, savedText, onDirty])
 
   const commit = useCallback((): void => {
     const content = bufferRef.current
+    if (content === savedText) {
+      // Nothing to write: Ctrl+S on a clean buffer is not an error.
+      setState('saved')
+      return
+    }
     setState('saving')
     void save(content, basisRef.current, new AbortController().signal).then((outcome) => {
       if (outcome.kind === 'saved') {
         basisRef.current = outcome.version
-        diskRef.current = content
+        setSavedText(content)
         setState('saved')
         return
       }
@@ -96,23 +114,15 @@ export function EditableTextBody({ text, version, save, reload, labels }: Editab
       setMessage(outcome.message)
       setState('failed')
     })
-  }, [save])
+  }, [save, savedText])
 
-  // Typing rests, then saves. A conflict stops the timer: sending again would
-  // overwrite whatever won the race with bytes the reader has not chosen yet.
-  useEffect(() => {
-    if (state === 'stale') return
-    if (buffer === diskRef.current) return
-    if (resaveRef.current) {
-      // "Keep mine" asked the Host for the current version; the reader's text is
-      // still in the buffer, so the basis is fresh and the save can land.
-      resaveRef.current = false
-      commit()
-      return
-    }
-    const timer = setTimeout(commit, SAVE_DEBOUNCE_MS)
-    return () => { clearTimeout(timer) }
-  }, [buffer, version, commit, state])
+  const onKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    // The editor's save key, wherever the caret is: the reader should not have to
+    // leave the text to keep it.
+    if (event.key.toLowerCase() !== 's' || !(event.ctrlKey || event.metaKey)) return
+    event.preventDefault()
+    commit()
+  }, [commit])
 
   const line = state === 'saving'
     ? labels.saving
@@ -125,8 +135,8 @@ export function EditableTextBody({ text, version, save, reload, labels }: Editab
           : ''
   return (
     <div className={css.editor} data-textpreview-editor>
-      <p className={css.status} data-textpreview-save={state} hidden={line === ''}>
-        <span className={css.statusText}>{line}</span>
+      <p className={css.status} data-textpreview-save={state} hidden={line === '' && state !== 'clean'}>
+        <span className={css.statusText}>{line === '' ? labels.saveHint : line}</span>
         {state === 'stale' && (
           <>
             <button
@@ -141,7 +151,7 @@ export function EditableTextBody({ text, version, save, reload, labels }: Editab
               type="button"
               className={css.action}
               data-textpreview-use-disk
-              onClick={() => { setBuffer(diskRef.current); setState('clean'); reload() }}
+              onClick={() => { setBuffer(text); setSavedText(text); setState('clean'); reload() }}
             >
               {labels.useDisk}
             </button>
@@ -154,7 +164,19 @@ export function EditableTextBody({ text, version, save, reload, labels }: Editab
         spellCheck={false}
         aria-label={labels.editAria}
         data-textpreview-textarea
-        onChange={(event) => { setBuffer(event.target.value) }}
+        onKeyDown={onKeyDown}
+        onChange={(event) => {
+          const next = event.target.value
+          // "Keep mine" asked for the current version; the reader's next keystroke
+          // lands on that basis, so the pending re-save is no longer needed.
+          if (resaveRef.current) resaveRef.current = false
+          setBuffer(next)
+        }}
+        onBlur={() => {
+          if (!resaveRef.current) return
+          resaveRef.current = false
+          commit()
+        }}
       />
     </div>
   )
