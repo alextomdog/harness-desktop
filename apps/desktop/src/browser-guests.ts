@@ -46,8 +46,11 @@ interface Capture {
  * `Page` is here for `Page.captureScreenshot`: a screenshot command against a
  * target whose Page domain was never enabled does not answer, and the tool that
  * asked fails on its deadline with nothing to say about why.
+ *
+ * `Debugger` is here for its `scriptParsed` events, which are how the script
+ * listing knows what the page loaded without asking it.
  */
-const CAPTURED_DOMAINS = ['Page.enable', 'Runtime.enable', 'Log.enable', 'Network.enable'] as const
+const CAPTURED_DOMAINS = ['Page.enable', 'Runtime.enable', 'Log.enable', 'Network.enable', 'Debugger.enable'] as const
 
 /** Owns workspace storage partitions independently from individual tab guests. */
 export class DesktopBrowserGuests {

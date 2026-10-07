@@ -289,6 +289,156 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
   }))
 
   ctx.tools.register(defineTool({
+    name: 'list_scripts',
+    description: 'List the scripts a page of the built-in browser has loaded, with the ids used to read them. '
+      + 'Ids expire when the page reloads or navigates.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to read, as select_page lists it. Defaults to the only page.' },
+      urlFilter: { type: 'string', description: 'Return only scripts whose URL contains this text.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          scripts: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                scriptId: { type: 'string', required: true },
+                url: { type: 'string', required: true },
+              },
+            },
+          },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.scripts.length === 0
+          ? 'No scripts captured since this page attached; reload it to capture its load.'
+          : value.scripts.map(script => `${script.scriptId} ${script.url}`).join('\n'),
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to read')
+      const capture = await control.events(page.lease)
+      requireDomains(capture, ['Debugger.enable'])
+      const scripts = scriptsOf(capture.events)
+        .filter(script => args.urlFilter === undefined || script.url.includes(args.urlFilter))
+      return { scripts }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'get_script_source',
+    description: 'Read a script a page of the built-in browser loaded. Select it by url or scriptId, and narrow '
+      + 'the read with line ranges, or with offset and length for minified single-line code.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to read, as select_page lists it. Defaults to the only page.' },
+      scriptId: { type: 'string', description: 'Script id from list_scripts. Preferred only within one page life.' },
+      url: { type: 'string', description: 'Script URL or a unique substring of it; the preferred selector.' },
+      startLine: { type: 'number', description: '1-based first line to return.' },
+      endLine: { type: 'number', description: 'Inclusive last line to return.' },
+      offset: { type: 'number', description: 'Zero-based character offset into the source.' },
+      length: { type: 'number', description: 'Maximum characters to return from offset. Defaults to 1000.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          url: { type: 'string', required: true },
+          text: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: `// ${value.url}\n${value.text}` }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to read')
+      const scripts = scriptsOf((await control.events(page.lease)).events)
+      const script = args.scriptId !== undefined
+        ? scripts.find(candidate => candidate.scriptId === args.scriptId)
+        : scripts.find(candidate => candidate.url.includes(args.url ?? ''))
+      if (script === undefined) {
+        throw new Error(`no script matches ${args.scriptId ?? args.url ?? ''}: list_scripts names the ones this page loaded`)
+      }
+      const source = await control.command(page.lease, 'Debugger.getScriptSource', { scriptId: script.scriptId }) as { scriptSource?: string }
+      const full = source.scriptSource ?? ''
+      if (args.offset !== undefined) {
+        return { url: script.url, text: full.slice(args.offset, args.offset + (args.length ?? 1_000)) }
+      }
+      if (args.startLine === undefined && args.endLine === undefined) return { url: script.url, text: full }
+      // The protocol counts lines from 0; the tool counts from 1 like every editor.
+      const lines = full.split('\n')
+      const from = Math.max(0, (args.startLine ?? 1) - 1)
+      const to = Math.min(lines.length, args.endLine ?? lines.length)
+      return { url: script.url, text: lines.slice(from, to).join('\n') }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'search_in_sources',
+    description: 'Search the scripts a page of the built-in browser loaded for text or a regular expression, '
+      + 'and return the matching lines.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to read, as select_page lists it. Defaults to the only page.' },
+      query: { type: 'string', required: true, description: 'Text to find, or a regular expression when isRegex is true.' },
+      isRegex: { type: 'boolean', description: 'Interpret query as a regular expression. Defaults to false.' },
+      urlFilter: { type: 'string', description: 'Search only scripts whose URL contains this text.' },
+      maxResults: { type: 'number', description: 'Maximum matches to return. Defaults to 30.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          matches: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                url: { type: 'string', required: true },
+                line: { type: 'number', required: true },
+                text: { type: 'string', required: true },
+              },
+            },
+          },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.matches.length === 0
+          ? 'No match in the scripts this page loaded.'
+          : value.matches.map(match => `${match.url}:${String(match.line)} ${match.text}`).join('\n'),
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to read')
+      const wanted = args.maxResults === undefined || args.maxResults <= 0 ? 30 : Math.min(args.maxResults, 200)
+      const scripts = scriptsOf((await control.events(page.lease)).events)
+        .filter(script => script.url !== '' && (args.urlFilter === undefined || script.url.includes(args.urlFilter)))
+      // A regex the caller cannot compile is their error, not a silent no-match.
+      const pattern = args.isRegex === true
+        ? new RegExp(args.query, 'u')
+        : undefined
+      const matches: { url: string; line: number; text: string }[] = []
+      for (const script of scripts) {
+        if (matches.length >= wanted) break
+        const source = await control.command(page.lease, 'Debugger.getScriptSource', { scriptId: script.scriptId }) as { scriptSource?: string }
+        const lines = (source.scriptSource ?? '').split('\n')
+        for (const [index, text] of lines.entries()) {
+          const hit = pattern === undefined ? text.includes(args.query) : pattern.test(text)
+          if (!hit) continue
+          matches.push({ url: script.url, line: index + 1, text: text.slice(0, 200) })
+          if (matches.length >= wanted) break
+        }
+      }
+      return { matches }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'list_console_messages',
     description: 'Inspect console messages and uncaught page errors captured for a page of the built-in browser.',
     parameters: {
@@ -386,6 +536,17 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       return { requests: requests.slice(-pageSizeOf(args.pageSize)) }
     },
   }))
+}
+
+/** The scripts a page announced, in the order the protocol reported them. */
+function scriptsOf(events: readonly DesktopBrowserEvent[]): { scriptId: string; url: string }[] {
+  return events
+    .filter(event => event.method === 'Debugger.scriptParsed')
+    .map((event) => {
+      const params = event.params as { scriptId?: string; url?: string }
+      return { scriptId: params.scriptId ?? '', url: params.url ?? '' }
+    })
+    .filter(script => script.scriptId !== '')
 }
 
 /** The domains a console listing reads. */
