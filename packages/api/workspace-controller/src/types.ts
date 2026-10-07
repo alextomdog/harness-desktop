@@ -44,6 +44,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
       readonly sessionId: SessionId
       readonly activity: readonly SessionActivity[]
     }
+    /**
+     * The Session is open — a handle here or in another process is writing it,
+     * which is the usual state of the conversation on screen — so its stored
+     * events cannot be removed. Nothing was written.
+     */
+    'workspace/session-running': { readonly sessionId: SessionId }
     /** The Session or its anchor is not in the Workspace's manual order. */
     'workspace/move-invalid': {
       readonly workspaceId: WorkspaceId
@@ -127,6 +133,20 @@ export interface WorkspaceArchiveSessionRequest {
 /** Session requested for restoration from the archived Session list. */
 export interface WorkspaceUnarchiveSessionRequest {
   readonly sessionId: SessionId
+}
+
+/** Session requested for permanent removal, together with its stored events. */
+export interface WorkspaceDeleteSessionRequest {
+  readonly sessionId: SessionId
+}
+
+/**
+ * The sets that remain after a permanent removal. A removed Session cannot stay
+ * archived or pinned, so both complete sets come back rather than a delta.
+ */
+export interface WorkspaceDeleteSessionValue {
+  readonly archivedSessionIds: readonly SessionId[]
+  readonly pinnedSessionIds: readonly SessionId[]
 }
 
 /** Complete archived Session set after a mutation. */

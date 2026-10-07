@@ -394,6 +394,42 @@ export interface SessionArchiveConfirmRequest {
 }
 
 /**
+ * The delete action's menu-row share. It only ASKS: removing a Session takes its
+ * stored events off the disk and cannot be undone, so the request opens a
+ * confirmation and the removal happens there.
+ */
+export interface DeleteSessionInjected {
+  /** Raise the delete confirmation for one Session. */
+  requestSessionDelete: (sessionId: SessionId, displayTitle: string) => void
+}
+
+/** One delete confirmation the delete action asked for. */
+export interface SessionDeleteConfirmRequest {
+  /** Session to remove. */
+  sessionId: SessionId
+  /** The row's display title, named in the dialog. */
+  displayTitle: string
+}
+
+/**
+ * Delete dialog share: the pending confirmation, its settlement, and the
+ * removal hop that reaches the Host.
+ */
+export interface SessionDeleteConfirmInjected {
+  hooks: {
+    /** The confirmation asked for, until the dialog consumes or cancels it. */
+    deleteRequest: HostObservable<SessionDeleteConfirmRequest | null>
+  }
+  /** Consume or cancel the pending confirmation. */
+  settleSessionDelete: () => void
+  /**
+   * Remove the Session for good. Rejects with the Host's own refusal — an open
+   * Session is the one it makes — so the dialog can show it.
+   */
+  deleteSession: (sessionId: SessionId) => Promise<void>
+}
+
+/**
  * Stop-and-archive dialog share: the pending confirmation, its settlement,
  * and the archive hop that asks the Host to stop the work first.
  */
@@ -471,6 +507,13 @@ export type SessionArchiveConfirmProps =
   & PropsLocale<'workspace'>
   & Omit<SessionArchiveConfirmInjected, 'hooks'>
   & PropsHooks<SessionArchiveConfirmInjected['hooks']>
+
+/** Props of the delete dialog entry in `shell.overlay`. */
+export type SessionDeleteConfirmProps =
+  PropsRuntime<'shell.overlay'>
+  & PropsLocale<'workspace'>
+  & Omit<SessionDeleteConfirmInjected, 'hooks'>
+  & PropsHooks<SessionDeleteConfirmInjected['hooks']>
 
 /**
  * Props of the row toast entry in `shell.overlay`. The declared viewing store

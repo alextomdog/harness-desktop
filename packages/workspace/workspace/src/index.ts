@@ -40,16 +40,16 @@ export function WorkspaceId(id: string): WorkspaceId {
 }
 
 /**
- * An archiveSession or pinSession request named a session neither live nor in
- * session persistence — a definite miss only; storage faults propagate as
- * themselves.
+ * An archiveSession, pinSession, or removeSession request named a session
+ * neither live nor in session persistence — a definite miss only; storage
+ * faults propagate as themselves.
  */
 export class WorkspaceUnknownSessionError extends Error {
   /**
    * @param sessionId - The unknown session id.
    * @param verb - The registry operation that named the session.
    */
-  constructor(readonly sessionId: SessionId, verb: 'archive' | 'pin') {
+  constructor(readonly sessionId: SessionId, verb: 'archive' | 'pin' | 'remove') {
     super(`cannot ${verb} session '${sessionId}': live sessions and session persistence hold no such session`)
     this.name = 'WorkspaceUnknownSessionError'
   }
@@ -404,6 +404,45 @@ export class WorkspaceRegistry extends Service {
         ...state,
         archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
       })
+    })
+  }
+
+  /**
+   * Remove one session from every durable surface this registry owns: the
+   * Workspace accounting that groups it, the header and path indexes that name
+   * it, and the archive and pin sets. Removing an id that is in no set is not an
+   * error, and an unknown id is, on the same terms as archive.
+   *
+   * This drops the ROW, not the events. A caller deleting a session for good
+   * removes the artifact FIRST — session persistence refuses a live session
+   * through its write lease, which is the only liveness fact that covers every
+   * process — and calls this only once that succeeded. The other order would
+   * strip a running session's row and leave its data, which is the one outcome
+   * worth refusing outright; this order's own bad arm (the artifact gone, the
+   * row not) is at least invisible and retryable, because removing a missing
+   * artifact answers success.
+   * @param sessionId - The session to remove.
+   * @returns resolution after durability.
+   */
+  removeSession(sessionId: SessionId): Promise<void> {
+    return this.enqueueOperation(async () => {
+      if (!(await this.sessionKnown(sessionId))) {
+        throw new WorkspaceUnknownSessionError(sessionId, 'remove')
+      }
+      for (const entity of this.entities.values()) {
+        if (entity.sessionIds.includes(sessionId)) await entity.detachSession(sessionId)
+      }
+      this.headers.delete(sessionId)
+      this.sessionPaths.delete(sessionId)
+      this.invalidSessionPaths.delete(sessionId)
+      const state = this.requireState()
+      if (state.archivedSessionIds.includes(sessionId) || state.pinnedSessionIds.includes(sessionId)) {
+        await this.setState({
+          ...state,
+          archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
+          pinnedSessionIds: state.pinnedSessionIds.filter(id => id !== sessionId),
+        })
+      }
     })
   }
 

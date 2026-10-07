@@ -7,6 +7,8 @@ import type { RemoteFailure, RemoteResult, TypertClientRemote } from '@deepseek-
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
+  WorkspaceDeleteSessionRequest,
+  WorkspaceDeleteSessionValue,
   WorkspaceBaseline,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
@@ -219,6 +221,26 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     const result = await this.remote.unarchiveSession({ sessionId })
     if (result.ok && requestSeq === this.archiveRequestSeq) {
       this.installArchived(result.value.archivedSessionIds)
+    }
+    return result
+  }
+
+  /**
+   * Remove one Session for good and install the sets that remain. A refused
+   * reply installs nothing, because the Host writes nothing when it refuses.
+   * @param sessionId - Session to remove.
+   * @returns generated Remote result.
+   */
+  async deleteSession(
+    sessionId: WorkspaceDeleteSessionRequest['sessionId'],
+  ): Promise<RemoteResult<WorkspaceDeleteSessionValue>> {
+    const requestSeq = ++this.archiveRequestSeq
+    const result = await this.remote.deleteSession({ sessionId })
+    if (result.ok && requestSeq === this.archiveRequestSeq) {
+      // A removed Session cannot stay archived or pinned; the Host returns both
+      // complete sets rather than a delta.
+      this.installArchived(result.value.archivedSessionIds)
+      this.installPinned(result.value.pinnedSessionIds)
     }
     return result
   }

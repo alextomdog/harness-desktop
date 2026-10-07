@@ -1,6 +1,7 @@
 /** Workspace command implementation and stable Remote failure mapping. */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { SessionAlreadyOwnedError } from '@deepseek-ai/dsh-session-persistence'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import {
   WorkspaceActiveSessionError,
@@ -18,6 +19,8 @@ import type {
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
+  WorkspaceDeleteSessionRequest,
+  WorkspaceDeleteSessionValue,
   WorkspaceDeleteValue,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
@@ -180,6 +183,47 @@ export class WorkspaceCommands {
       throw error
     }
     return { archivedSessionIds: [...this.ctx.workspaceRegistry.archivedSessionIds] }
+  }
+
+  /**
+   * Remove one Session for good: its stored events leave the disk, and every
+   * durable surface that named it stops doing so.
+   *
+   * The artifact goes FIRST. Session persistence refuses a Session that a handle
+   * — here or in another process — is still writing, and that refusal is the
+   * whole liveness check; because it happens before any registry write, a
+   * running Session keeps its row and nothing is half-done. The other order
+   * trades that for the opposite failure: a running Session stripped of its row
+   * while its data stayed.
+   * @param request - Session identity to remove.
+   * @returns the archive and pin sets that remain.
+   */
+  async deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue> {
+    try {
+      await this.ctx.sessionPersistence.delete(request.sessionId)
+    } catch (error) {
+      if (error instanceof SessionAlreadyOwnedError) {
+        throw new RemoteError(
+          'workspace/session-running',
+          `cannot delete session '${request.sessionId}': the session is open`,
+          { sessionId: request.sessionId },
+          { cause: error },
+        )
+      }
+      throw error
+    }
+    try {
+      await this.ctx.workspaceRegistry.removeSession(request.sessionId)
+    } catch (error) {
+      if (error instanceof WorkspaceUnknownSessionError) {
+        throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId }, { cause: error })
+      }
+      throw error
+    }
+    return {
+      archivedSessionIds: [...this.ctx.workspaceRegistry.archivedSessionIds],
+      pinnedSessionIds: [...this.ctx.workspaceRegistry.pinnedSessionIds],
+    }
   }
 
   /**
