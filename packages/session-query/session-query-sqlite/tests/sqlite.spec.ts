@@ -129,6 +129,11 @@ class TestHandle implements SessionHandle {
 }
 
 class TestPersistence extends SessionPersistence {
+  /** Removal is not exercised here; the member exists so the double stays concrete. */
+  async delete(): Promise<boolean> {
+    throw new Error('delete is not implemented by this in-memory double')
+  }
+
   static entries = new Map<SessionIdType, { meta: SessionHeader; events: SessionEvent[] }>()
   static revisions = new Map<SessionIdType, number>()
   static nextRevision = 0

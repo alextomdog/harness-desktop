@@ -105,6 +105,11 @@ interface StoredSession {
 
 /** Minimal controllable persistence provider for service-level tests. */
 class TestPersistence extends SessionPersistence {
+  /** Removal is not exercised here; the member exists so the double stays concrete. */
+  async delete(): Promise<boolean> {
+    throw new Error('delete is not implemented by this in-memory double')
+  }
+
   readonly durable = new Map<SessionId, StoredSession>()
   readFailure: Error | undefined
   appendFailure: Error | undefined

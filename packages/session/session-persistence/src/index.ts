@@ -106,6 +106,12 @@ export interface SessionPersistenceListOptions {
   readonly signal?: AbortSignal
 }
 
+/** Options for {@link SessionPersistence.delete}. */
+export interface SessionPersistenceDeleteOptions {
+  /** Optional cancellation observed before the removal starts. */
+  readonly signal?: AbortSignal
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     sessionPersistence: SessionPersistence
@@ -199,6 +205,21 @@ export abstract class SessionPersistence extends Service {
    * @returns one snapshot per stored session.
    */
   abstract list(options?: SessionPersistenceListOptions): Promise<readonly SessionPersistenceSnapshot[]>
+
+  /**
+   * Remove one stored Session and its artifacts from durable storage.
+   *
+   * A Session that is live — held by a handle in this process or in another —
+   * is REFUSED rather than removed, because its artifacts are still being
+   * written and a removal would take a tail that has not landed. The backend's
+   * own write ownership is the check, so the refusal covers every process and
+   * needs no separate liveness registry. A Session with no artifact is not an
+   * error: it answers `false`, so a retry after a lost race is harmless.
+   * @param id - the stored Session to remove.
+   * @param options - optional cancellation.
+   * @returns whether a stored Session was there to remove.
+   */
+  abstract delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<boolean>
 }
 
 export default SessionPersistence

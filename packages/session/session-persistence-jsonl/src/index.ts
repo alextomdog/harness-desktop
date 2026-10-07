@@ -33,6 +33,7 @@ import {
 } from '@deepseek-ai/dsh-session-persistence'
 import { JsonlBackendTracker, JsonlSessionHandle, type StorageHandleState } from './storage.ts'
 import { SessionWriteLease } from './lease.ts'
+import type { SessionPersistenceDeleteOptions } from '@deepseek-ai/dsh-session-persistence'
 import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId, SessionHeader, SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session'
 import {
@@ -425,6 +426,46 @@ class JsonlSessionPersistence extends SessionPersistence {
    */
   flush(): Promise<void> {
     return this.tracker.flushAll()
+  }
+
+  /**
+   * Remove one stored Session and its artifacts from disk.
+   *
+   * The session directory's write lease is the gate: a Session some handle —
+   * this process's or another's — is still writing fails the acquisition, so
+   * the removal is refused instead of taking a tail that has not landed. The
+   * removal runs UNDER that lease and takes the lock file with the directory;
+   * releasing first would let a writer acquire the lock on a directory this
+   * call is about to delete. Losing the lock file with the Session is the
+   * point — there is no Session left for it to exclude.
+   * @param id - the stored Session to remove.
+   * @param options - optional cancellation.
+   * @returns whether a stored Session was there to remove.
+   */
+  async delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<boolean> {
+    const signal = options?.signal
+    signal?.throwIfAborted()
+    await this.ensureRootEncoding()
+    signal?.throwIfAborted()
+    /* v8 ignore next 3 -- an unmaterialized created Session has no directory to remove. */
+    if (this.tracker.pendingOf(id) !== undefined) {
+      throw new Error(`cannot delete session "${id}": it is open in this process`)
+    }
+    const selected = await this.findLog(id, signal)
+    if (selected === undefined) return false
+    const header = await this.readGenerationHeader(selected, id, signal)
+    if (header === undefined) return false
+    const dir = sessionDir(this.root, header.cwd, id)
+    const lease = await SessionWriteLease.acquire(dir, id)
+    try {
+      signal?.throwIfAborted()
+      await rm(dir, { recursive: true, force: true })
+      this.coldLogMemo.delete(id)
+      await this.syncDirPosix(projectDir(this.root, header.cwd))
+    } finally {
+      await lease.release()
+    }
+    return true
   }
 
   /**

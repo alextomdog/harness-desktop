@@ -83,6 +83,11 @@ class TraceHandle implements SessionHandle {
 }
 
 class TracePersistence extends SessionPersistence {
+  /** Removal is not exercised here; the member exists so the double stays concrete. */
+  async delete(): Promise<boolean> {
+    throw new Error('delete is not implemented by this tracing double')
+  }
+
   static entries = new Map<SessionIdType, { meta: SessionHeader; events: SessionEvent[] }>()
   static listCalls = 0
   static readCalls = 0
