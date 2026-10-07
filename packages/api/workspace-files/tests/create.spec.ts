@@ -193,6 +193,42 @@ describe('workspaceFiles.write', () => {
   })
 })
 
+describe('workspaceFiles.writeBytes', () => {
+  it('writes the bytes the caller encoded, byte for byte', async () => {
+    // The endpoint replaces what is there, as the text write does, so it exists first.
+    await writeFile(join(workspace, 'book.xlsx'), Buffer.from([0]))
+    // A zip header and a NUL: what a text write could not carry unchanged.
+    const bytes = Uint8Array.of(0x50, 0x4b, 0x03, 0x04, 0x00, 0xff)
+    const written = await harness.endpoint().writeBytes(
+      harness.scope, 'book.xlsx', Buffer.from(bytes).toString('base64'), undefined, signal(),
+    )
+    expect(Array.from(await readFile(join(workspace, 'book.xlsx')))).toEqual(Array.from(bytes))
+    expect(written.version).toBeTruthy()
+  })
+
+  it('replaces at the version its reader saw', async () => {
+    await writeFile(join(workspace, 'book.xlsx'), Buffer.from([1, 2, 3]))
+    const read = await harness.endpoint().readBytes(harness.scope, 'book.xlsx', {}, signal())
+    const written = await harness.endpoint().writeBytes(
+      harness.scope, 'book.xlsx', Buffer.from([9, 8]).toString('base64'), read.version, signal(),
+    )
+    expect(written.version).not.toBe(read.version)
+    expect(Array.from(await readFile(join(workspace, 'book.xlsx')))).toEqual([9, 8])
+  })
+
+  it('refuses a stale basis, leaving the other writer\'s bytes alone', async () => {
+    await writeFile(join(workspace, 'book.xlsx'), Buffer.from([1, 2, 3]))
+    const read = await harness.endpoint().readBytes(harness.scope, 'book.xlsx', {}, signal())
+    // Someone else writes it: the editor's basis is stale from here on.
+    await writeFile(join(workspace, 'book.xlsx'), Buffer.from([4, 5, 6]))
+    const failure = await failureOf(harness.endpoint().writeBytes(
+      harness.scope, 'book.xlsx', Buffer.from([7]).toString('base64'), read.version, signal(),
+    ))
+    expect(failure.code).toBe('workspace-file/stale-version')
+    expect(Array.from(await readFile(join(workspace, 'book.xlsx')))).toEqual([4, 5, 6])
+  })
+})
+
 describe('workspaceFiles.deleteEntry', () => {
   it('deletes a file and reports what it was', async () => {
     await writeFile(join(workspace, 'gone.md'), 'x', 'utf8')

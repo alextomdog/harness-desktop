@@ -201,6 +201,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
      * read. Nothing was written, so the caller can re-read and retry.
      */
     'workspace-file/stale-version': { readonly path: string; readonly version: string }
+    /**
+     * This deployment's filesystem has no byte-write path — the SSH backend
+     * carries text writes only — so a document that is not text cannot be saved
+     * here. The call changed nothing.
+     */
+    'workspace-file/not-writable': { readonly path: string }
     /** The path is not a regular file, so it has no text to read. */
     'workspace-file/not-regular-file': {
       readonly path: string

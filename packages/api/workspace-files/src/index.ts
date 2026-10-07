@@ -31,7 +31,7 @@ import { posix, win32 } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-fs'
-import type { FsDirEntry, FsInfo, FsPathInfo, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
+import type { FsDirEntry, FsInfo, FsPathInfo, FsTarget, FsVersion, FsWriteBytesOutcome, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
@@ -319,6 +319,73 @@ export class WorkspaceFiles extends TypertRemoteService {
     }
     // Re-observed, not the pre-write stat: the size and modification time a
     // reader sees must describe the bytes that are there now.
+    const after = await this.ctx.fs.stat(target, signal)
+    /* v8 ignore next -- the write just published this file, so the probe cannot miss it. */
+    if (after === undefined) throw new Error(`"${path}" vanished between its write and its stat`)
+    return { ...this.statOf(target, after), version: String(outcome.version) }
+  }
+
+  /**
+   * Replace one file's whole content with bytes, refusing a write whose basis the
+   * file has moved past.
+   *
+   * The text write's sibling, for documents that are not text: a workbook, an
+   * archive, an image. It carries the same version guard and the same refusal, so
+   * a binary document written underneath its reader is left alone. The bytes
+   * travel as base64 because the request path carries JSON: a third more traffic
+   * is the price of not inventing a second transport for one endpoint.
+   * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+   * @param path - workspace path of the file to write.
+   * @param data - the complete new bytes, base64-encoded.
+   * @param expectedVersion - the version the caller read, or `undefined` to write unconditionally.
+   * @param signal - caller cancellation.
+   * @returns the file at its new version.
+   */
+  @Remote
+  async writeBytes(
+    workspaceFileScope: WorkspaceFileScope,
+    path: string,
+    data: string,
+    expectedVersion: string | undefined,
+    signal: AbortSignal,
+  ): Promise<WorkspaceFileStat> {
+    signal.throwIfAborted()
+    const { workspaceRoot, sessionId } = workspaceFileScope
+    const { target } = await this.locateFile(workspaceFileScope, path, signal)
+    const expected: FsWriteIntent | undefined = expectedVersion === undefined
+      ? undefined
+      : { kind: 'replaceIfVersion', version: expectedVersion as FsVersion }
+    let outcome: FsWriteBytesOutcome
+    try {
+      outcome = await this.ctx.fs.writeBytes(
+        target,
+        Uint8Array.from(Buffer.from(data, 'base64')),
+        expected,
+        signal,
+        { mode: 'workspace-write', workspaceRoot, sessionId },
+      )
+    } catch (error: unknown) {
+      const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+      if (code === 'FS_STALE_VERSION') {
+        throw new RemoteError(
+          'workspace-file/stale-version',
+          `"${path}" changed since it was read`,
+          { path, version: expectedVersion ?? '' },
+          { cause: error },
+        )
+      }
+      if (code === 'FS_UNSUPPORTED') {
+        throw new RemoteError(
+          'workspace-file/not-writable',
+          `"${path}" cannot be written as bytes in this deployment`,
+          { path },
+          { cause: error },
+        )
+      }
+      throw this.refusalOf(error, path) ?? error
+    }
+    // Re-observed, as the text write does: the reader's next basis is the file
+    // that is there now.
     const after = await this.ctx.fs.stat(target, signal)
     /* v8 ignore next -- the write just published this file, so the probe cannot miss it. */
     if (after === undefined) throw new Error(`"${path}" vanished between its write and its stat`)
