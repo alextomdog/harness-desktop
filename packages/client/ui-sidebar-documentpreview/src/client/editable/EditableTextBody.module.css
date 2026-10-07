@@ -1,0 +1,63 @@
+/**
+ * The editor fills the preview's body and scrolls inside itself, so the tab's
+ * scrollport keeps measuring the same box it always did.
+ */
+.editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.status {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--dsh-border-subtle, rgb(0 0 0 / 8%));
+  color: var(--dsh-text-tertiary, #6b6b6b);
+  font-size: 12px;
+}
+
+.statusText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--dsh-border-subtle, rgb(0 0 0 / 12%));
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--dsh-surface-hover, rgb(0 0 0 / 4%));
+}
+
+.area {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--dsh-text-primary, #1a1a1a);
+  font-family: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}

@@ -86,9 +86,13 @@ export type DocumentFileBytes = WorkspaceFileBytes<Uint8Array<ArrayBuffer>>
 
 /**
  * What one save attempt did, as the editor needs it: a stale basis is a DECISION
- * for the reader, not a failure to retry silently.
+ * for the reader, not a failure to retry silently. A successful save carries the
+ * version it produced, because that is the next save's basis.
  */
-export type WriteWorkspaceFileOutcome = 'saved' | 'stale' | 'failed'
+export type WriteWorkspaceFileOutcome =
+  | { readonly kind: 'saved'; readonly version: string }
+  | { readonly kind: 'stale' }
+  | { readonly kind: 'failed'; readonly message: string }
 
 /**
  * The slice of the Client Remote a save calls. Kept beside the read face so both
@@ -131,8 +135,10 @@ export function createWriteFile(
 ): (content: string, expectedVersion: string, signal: AbortSignal) => Promise<WriteWorkspaceFileOutcome> {
   return async (content, expectedVersion, signal) => {
     const result = await remote.workspaceFiles.write(file.sessionId, file.path, content, expectedVersion, signal)
-    if (result.ok) return 'saved'
-    return result.error.code === 'workspace-file/stale-version' ? 'stale' : 'failed'
+    if (result.ok) return { kind: 'saved', version: result.value.version }
+    return result.error.code === 'workspace-file/stale-version'
+      ? { kind: 'stale' }
+      : { kind: 'failed', message: result.error.message }
   }
 }
 

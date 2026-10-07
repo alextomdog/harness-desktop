@@ -30,6 +30,16 @@ export const zh = {
   'error.notRegularFile': '该路径不是普通文件，没有可显示的内容',
   'error.unavailable': '读取失败：{message}',
   retry: '重试',
+  'edit.start': '编辑',
+  'edit.stop': '结束编辑',
+  'edit.tool': '编辑此文件',
+  'edit.aria': '文件内容',
+  'edit.saving': '保存中…',
+  'edit.saved': '已保存',
+  'edit.stale': '文件已被改动；你的编辑尚未保存',
+  'edit.keepMine': '保留我的修改',
+  'edit.useDisk': '改用文件现有内容',
+  'edit.failed': '保存失败：',
 } satisfies Record<string, string>
 
 /** Text-preview dictionary key union. */
@@ -59,4 +69,14 @@ export const en = {
   'error.notRegularFile': 'Not a regular file, nothing to display.',
   'error.unavailable': 'Read failed: {message}',
   retry: 'Retry',
+  'edit.start': 'Edit',
+  'edit.stop': 'Stop editing',
+  'edit.tool': 'Edit this file',
+  'edit.aria': 'File contents',
+  'edit.saving': 'Saving…',
+  'edit.saved': 'Saved',
+  'edit.stale': 'The file changed; your edits are not saved yet',
+  'edit.keepMine': 'Keep mine',
+  'edit.useDisk': 'Use the file as it is',
+  'edit.failed': 'Save failed: ',
 } satisfies Record<SidebarDocumentPreviewKey, string>

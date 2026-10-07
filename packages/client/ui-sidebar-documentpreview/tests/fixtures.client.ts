@@ -19,6 +19,7 @@ import type { ResourceSnapshot } from '@deepseek-ai/dsh-client-resources/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceFileStat, WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
 import type { TextPreviewProps } from '../src/client/TextPreview.tsx'
+import type { WriteWorkspaceFileOutcome } from '../src/client/rpc.ts'
 import { textFace } from '../src/client/face.ts'
 import type { TextInjected } from '../src/client/face.ts'
 import type { DocumentFileBytes, ReadDocumentBytes, ReadWorkspaceFilePage, SessionFile } from '../src/client/rpc.ts'
@@ -132,7 +133,9 @@ export function harness(script: Record<number, RemoteResult<WorkspaceFileText>> 
   const read = vi.fn<ReadWorkspaceFilePage>((_session, _path, offset) =>
     Promise.resolve(pages[offset] ?? failure('workspace-file/not-found', { path: PATH })))
   const bytes = vi.fn<ReadDocumentBytes>()
-  const face = textFace(read, bytes, createResources())(SESSION, instance.actions)
+  // Reading is what these cases exercise; a save is taken and reported as landed.
+  const save = async (): Promise<WriteWorkspaceFileOutcome> => ({ kind: 'saved', version: 'v2' })
+  const face = textFace(read, bytes, createResources(), save)(SESSION, instance.actions)
   const current = { version: 'v1' as string | undefined, failure: undefined as RemoteFailure | undefined, snapshot: meta('v1', undefined) }
   const refresh = (): void => { current.snapshot = meta(current.version, current.failure) }
   const useResource = vi.fn<() => ResourceSnapshot<WorkspaceFileStat>>(() => current.snapshot)

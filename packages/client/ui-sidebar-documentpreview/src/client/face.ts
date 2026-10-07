@@ -19,7 +19,7 @@
 import type { BoundActions } from '@deepseek-ai/dsh-client-store'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ReadDocumentBytes, ReadWorkspaceFilePage, SessionFile } from './rpc.ts'
+import type { ReadDocumentBytes, ReadWorkspaceFilePage, SessionFile, WriteWorkspaceFileOutcome } from './rpc.ts'
 import type { TextStore } from './store.ts'
 import type { DocumentLoadMode } from './document/registry.ts'
 import type { Resources } from '@deepseek-ai/dsh-client-resources/client'
@@ -82,6 +82,20 @@ export interface TextInjected {
    * @param reload - discard the previous content revision.
    */
   readonly prepareRenderer: (tabId: TabId, signal: AbortSignal, rendererId: string, observedVersion?: string, reload?: boolean) => void
+  /**
+   * Replace one file's whole content, guarded by the version its buffer came
+   * from. The refusal is reported, never retried: an editor that re-sent a stale
+   * buffer would overwrite whatever won the race.
+   * @param file - the session and workspace path the tab's address names.
+   * @param content - the complete new content.
+   * @param expectedVersion - the version the buffer was read at.
+   * @param signal - the save's own cancellation, not the tab's: a tab that closes
+   *   mid-save still wants the bytes it already sent to land.
+   * @returns what the save did, including the version it produced.
+   */
+  readonly save: (
+    file: SessionFile, content: string, expectedVersion: string, signal: AbortSignal,
+  ) => Promise<WriteWorkspaceFileOutcome>
 }
 
 /**
@@ -109,6 +123,7 @@ export function textFace(
   read: ReadWorkspaceFilePage,
   readAll: ReadDocumentBytes,
   resources: Resources,
+  save: (file: SessionFile, content: string, expectedVersion: string, signal: AbortSignal) => Promise<WriteWorkspaceFileOutcome>,
 ): (sessionId: SessionId, actions: BoundActions<TextStore>) => TextInjected {
   return (_sessionId: SessionId, actions: BoundActions<TextStore>): TextInjected => {
     const tabs = new Map<TabId, TabReads>()
@@ -210,7 +225,7 @@ export function textFace(
       setResources: (tabId, addresses, signal) => {
         if (!signal.aborted) readsOf(tabId, signal).group.set(addresses)
       },
-      loadPage, reloadPages: restart, loadAll,
+      loadPage, reloadPages: restart, loadAll, save,
       prepareRenderer: (tabId, signal, rendererId, observedVersion, reload = false) => {
         if (signal.aborted) return
         modeOf(tabId, signal, 'renderer', rendererId)

@@ -83,7 +83,7 @@ describe('HtmlBody', () => {
       source: address => address === ADDRESS ? root : dependencySource,
       register: () => () => {}, pin: () => {},
     }
-    const face = textFace(h.read, h.bytes, resources)(SESSION, h.instance.actions)
+    const face = textFace(h.read, h.bytes, resources, async () => ({ kind: 'saved', version: 'v2' }))(SESSION, h.instance.actions)
     const data = utf8(extension === 'css'
       ? '<link rel="stylesheet" href="./asset.css"><p>HTML content</p>'
       : '<p>HTML content</p><script src="./asset.js"></script>')

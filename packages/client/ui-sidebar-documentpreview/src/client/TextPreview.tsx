@@ -15,7 +15,7 @@ import clsx from 'clsx'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  FileTypeIcon, IconNowrapFillRegular, IconPauseOutlineRegular, IconPlayOutlineRegular,
+  FileTypeIcon, IconEditOutlineRegular, IconNowrapFillRegular, IconPauseOutlineRegular, IconPlayOutlineRegular,
   IconRefreshOutlineRegular, IconWrapFillRegular, Menu, PathLabel, Tooltip, classifyFileType,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { pathPartsOf } from '@deepseek-ai/dsh-util-workspace-path'
@@ -23,6 +23,7 @@ import type { TextInjected } from './face.ts'
 import { emptyFailureRecourse, failureLine } from './failure-line.ts'
 import { LoadingIndicator } from './LoadingIndicator.tsx'
 import { hostFileOf } from './rpc.ts'
+import { EditableTextBody } from './editable/EditableTextBody.tsx'
 import type { TextStore } from './store.ts'
 import type { DocumentContent } from './document/contract.ts'
 import { binaryDocumentPath, matchingDocumentPreviews } from './document/registry.ts'
@@ -56,7 +57,7 @@ export type TextPreviewProps =
 export function TextPreview({
   useTabInfo, useResource, useStore, actions, loadPage, reloadPages,
   loadAll, reloadAll, prepareRenderer, useDocumentPreviews, renderSlot, t,
-  addResource, setResources,
+  addResource, setResources, save,
 }: TextPreviewProps): ReactNode {
   const { tab } = useTabInfo()
   const { navigation, signal } = tab
@@ -90,6 +91,9 @@ export function TextPreview({
   const scrollportRef = useRef<HTMLElement | null>(null)
   const storedScrollTopRef = useRef(0)
   const [menuOpen, setMenuOpen] = useState(false)
+  // Editing is a mode of one preview, not a different tab: the reader flips it on
+  // the file they are looking at, and off again to read it.
+  const [editing, setEditing] = useState(false)
   const absolutePath = meta.value?.absolutePath ?? current?.complete?.absolutePath
   const displayPath = absolutePath ?? file.path
   // Contributions that hand the file to the Host wait for its Host path.
@@ -192,6 +196,10 @@ export function TextPreview({
     if (current === undefined || loaded.length === 0) return undefined
     return { kind: 'text', pages: loaded, text: loaded.filter(page => page.lines > 0).map(page => page.text).join('\n'), eof: current.eof }
   }, [mode, loaded, current?.complete, current?.eof, current?.loadRevision, rendererReload, actions, tab.id])
+
+  // Editing needs the WHOLE file in hand: a save writes the entire buffer, so a
+  // partially loaded one would truncate everything past what was read.
+  const editable = content?.kind === 'text' && content.eof === true && current?.version !== undefined
 
   // A known binary suffix with no matching renderer never reads: no plain-text
   // fallback, no viewer control, only the path, the unsupported line, and the
@@ -308,6 +316,20 @@ export function TextPreview({
             </button>
           </Tooltip>
         </span>
+        {editable && (
+          <Tooltip label={t('edit.tool')} side="bottom" delayMs={500}>
+            <button
+              type="button"
+              className={css.tool}
+              aria-pressed={editing}
+              aria-label={t(editing ? 'edit.stop' : 'edit.start')}
+              data-textpreview-tool="edit"
+              onClick={() => { setEditing(value => !value) }}
+            >
+              <IconEditOutlineRegular />
+            </button>
+          </Tooltip>
+        )}
         {/* Preview and file-tree refresh controls own different reload lifecycles and locale namespaces. */}
         {/* jscpd:ignore-start */}
         <Tooltip label={t('reload')} shortcutKeys={tab.refreshShortcut?.keys} side="bottom" delayMs={500}>
@@ -343,7 +365,20 @@ export function TextPreview({
         {mode !== 'renderer' && !hasContent && current?.failure === undefined && (
           <LoadingIndicator label={t('loading')} />
         )}
-        {content !== undefined && renderSlot('sidebar.right.tab.document', {
+        {editing && editable && content?.kind === 'text' && (
+          <EditableTextBody
+            text={content.text}
+            version={current?.version ?? ''}
+            reload={reload}
+            save={(value, expectedVersion, signal) => save(file, value, expectedVersion, signal)}
+            labels={{
+              saving: t('edit.saving'), saved: t('edit.saved'), stale: t('edit.stale'),
+              keepMine: t('edit.keepMine'), useDisk: t('edit.useDisk'), failed: t('edit.failed'),
+              editAria: t('edit.aria'),
+            }}
+          />
+        )}
+        {!(editing && editable) && content !== undefined && renderSlot('sidebar.right.tab.document', {
           resourceAddress: tab.contentId, content, wrap: state.wrap, scrollportRef: bindScrollport,
           addResource: add, setResources: set,
         }, {
