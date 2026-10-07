@@ -4,6 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import type { PlatformSession } from '@deepseek-ai/dsh-deepseek-account'
 import { desktopNodeEnvironment } from './node-environment.ts'
+import { isDesktopBrowserCommandRequest, type DesktopBrowserCommandRequest } from './browser-cdp.ts'
 
 interface ReadyEvent {
   readonly type: 'ready'
@@ -177,6 +178,14 @@ export class DesktopHostProcess {
     private readonly packageManager?: { readonly pnpm: string; readonly nodeBin: string },
 
     private readonly onPlatformSession?: (session: PlatformSession | null) => void,
+    /**
+     * Answers the Host's requests to drive the built-in browser. The shell is the
+     * only process holding the webview's debugger, so this is how an agent reaches
+     * the page the sidebar is showing.
+     * @param request - the validated request.
+     * @param send - the channel back to the Host.
+     */
+    private readonly onBrowserCommand?: (request: DesktopBrowserCommandRequest, send: (message: object) => void) => void,
   ) {}
 
   /**
@@ -204,6 +213,14 @@ export class DesktopHostProcess {
     child.stderr?.on('data', (chunk: string) => { this.stderr = (this.stderr + chunk).slice(-MAX_HOST_DIAGNOSTIC_CHARS) })
     child.stdout?.pipe(process.stdout)
     child.on('message', (message: unknown) => {
+      if (isDesktopBrowserCommandRequest(message)) {
+        // The Host asks; the shell answers. An unanswered request would hang the
+        // tool that asked, so the handler reports failures as replies too.
+        this.onBrowserCommand?.(message, (reply) => {
+          child.send(reply, (error) => { if (error !== null) console.error(error) })
+        })
+        return
+      }
       if (!isDesktopHostEvent(message)) {
         this.fail(new Error('dsh desktop host sent an invalid IPC event'))
         child.kill('SIGTERM')

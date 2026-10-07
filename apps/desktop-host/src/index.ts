@@ -14,6 +14,8 @@ import { installDesktopUpdateTaskControl } from './update-tasks.ts'
 import { installDesktopQuitInspection } from './quit-inspection.ts'
 import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
+import { installDesktopBrowserControl } from './browser-cdp.ts'
+import { applyBrowserTools } from './browser-tools.ts'
 
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
@@ -49,6 +51,9 @@ async function main(): Promise<void> {
     if (!process.connected || process.send === undefined) { resolve(); return }
     process.send(message, (error) => { if (error === null) resolve(); else reject(error) })
   })
+  // The shell owns the sidebar's webview guests; this is the Host's end of the
+  // bridge an agent drives the built-in browser through.
+  const browser = installDesktopBrowserControl()
   const stop = (): Promise<void> => stopping ??= (async () => {
     // Startup failure is reported by main; shutdown only owns a tree that booted.
     const running = await application.catch(() => undefined)
@@ -57,6 +62,7 @@ async function main(): Promise<void> {
     if (process.connected) process.disconnect()
   })()
   process.on('message', (message: unknown) => {
+    if (browser.handle(message)) return
     if (typeof message !== 'object' || message === null || !('type' in message)) return
     if (message.type === 'shutdown') { void stop(); return }
     if (message.type === 'quit-inspection') {
@@ -90,6 +96,9 @@ async function main(): Promise<void> {
   })
   process.once('disconnect', () => { void stop() })
   const { ctx } = await application
+  // Registered after the profile boots: the tools need the Host's registry, and
+  // the bridge they call is already listening for the shell's replies.
+  await ctx.plugin({ apply: (inner) => { applyBrowserTools(inner, browser) } })
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   control.quitInspection = installDesktopQuitInspection(ctx)
   await ctx.plugin(desktopOffice, {

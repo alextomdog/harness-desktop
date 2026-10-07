@@ -138,6 +138,43 @@ export class DesktopBrowserGuests {
     owner.once('destroyed', releaseAll)
   }
 
+  /**
+   * Every live guest, oldest first: what an agent driving the built-in browser may
+   * address. A lease without an attached guest is a reservation, not a page.
+   * @returns one entry per live page, naming the lease it belongs to.
+   */
+  list(): readonly { readonly lease: DesktopBrowserLeaseId; readonly url: string; readonly title: string }[] {
+    const pages: { lease: DesktopBrowserLeaseId; url: string; title: string }[] = []
+    for (const [lease, held] of this.leases) {
+      const guest = held.guest
+      if (guest === undefined || guest.isDestroyed()) continue
+      pages.push({ lease, url: guest.getURL(), title: guest.getTitle() })
+    }
+    return pages
+  }
+
+  /**
+   * Run one DevTools Protocol command against a lease's guest.
+   *
+   * The guest is an out-of-process frame: the renderer cannot read into it, and
+   * neither can the Host, which runs as a separate process. This main-process
+   * debugger attachment is therefore the only path an agent has to the page the
+   * sidebar is showing — which is the whole point of the bridge.
+   * @param leaseId - the lease received from the Host.
+   * @param method - a DevTools Protocol method name.
+   * @param params - the method's parameters, or nothing.
+   * @returns the protocol result.
+   * @throws when no live guest holds that lease.
+   */
+  async command(leaseId: string, method: string, params?: Record<string, unknown>): Promise<unknown> {
+    const guest = this.leases.get(leaseId as DesktopBrowserLeaseId)?.guest
+    if (guest === undefined || guest.isDestroyed()) {
+      throw new Error('desktop browser: no live guest holds that lease')
+    }
+    if (!guest.debugger.isAttached()) guest.debugger.attach('1.3')
+    return await guest.debugger.sendCommand(method, params)
+  }
+
   private configureSession(browserSession: Session): void {
     browserSession.setPermissionRequestHandler((_contents, _permission, callback) => { callback(false) })
     browserSession.setPermissionCheckHandler(() => false)
