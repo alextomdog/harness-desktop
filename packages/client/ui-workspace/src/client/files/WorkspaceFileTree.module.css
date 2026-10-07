@@ -73,6 +73,11 @@
 .headerToggle {
   display: flex;
   align-items: center;
+  /* Absorbs the row's free space, so the fold answers a click anywhere across the
+     row the hover highlights — not only on the label and its chevron. The
+     actions beside it keep their own targets. */
+  flex: 1 1 auto;
+  justify-content: flex-start;
   gap: 2px;
   min-width: 0;
   padding: 2px;
