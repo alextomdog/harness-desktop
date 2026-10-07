@@ -125,6 +125,11 @@ export class DesktopBrowserGuests {
       params.httpreferrer = ''
     })
     owner.on('did-attach-webview', (_event, guest) => {
+      // Attach before anything else. The renderer points the new guest at its URL
+      // as soon as it creates it, and a protocol domain reports only from the
+      // moment it is enabled — so attaching on `dom-ready` lost the very load the
+      // tools exist to read. This is the earliest the guest is addressable at all.
+      void this.attach(guest).catch((error: unknown) => { console.error(error) })
       let attachedLease: DesktopBrowserLeaseId | undefined
       // The first document is an inert about:blank carrying the approved lease.
       // Bind on the main-process event before the renderer can navigate the ready guest.
@@ -139,11 +144,6 @@ export class DesktopBrowserGuests {
         lease.guest = guest
         attachedLease = id
         lease.releaseInput = attachInput(guest, id)
-        // Attach now rather than on the first tool call. The protocol reports from
-        // the moment a domain is enabled, so a page that loads before anyone asks
-        // would have no traffic and no console to read — which is exactly what a
-        // live run found: two working tools returning empty lists.
-        void this.attach(guest).catch((error: unknown) => { console.error(error) })
         guest.once('destroyed', () => { lease.releaseInput?.(); this.leases.delete(id) })
       })
       guest.setWindowOpenHandler(({ url, postBody }) => {
