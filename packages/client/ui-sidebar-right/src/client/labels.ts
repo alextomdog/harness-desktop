@@ -32,6 +32,7 @@ export function dockLabels(t: TranslateNS<'sidebarRight'>, split?: ShortcutCatal
     closeTabKeys: close?.keys,
     closeOtherTabs: t('dock.closeOtherTabs'),
     closeTabsToRight: t('dock.closeTabsToRight'),
+    closeTabsToLeft: t('dock.closeTabsToLeft'),
     addTab: t('dock.addTab'),
     dockFloat: t('dock.dockFloat'),
     closeFloat: t('dock.closeFloat'),

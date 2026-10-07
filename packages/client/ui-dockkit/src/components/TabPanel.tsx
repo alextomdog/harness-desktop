@@ -25,7 +25,7 @@ import type { ReactNode, RefObject } from 'react'
 import clsx from 'clsx'
 import { IconCloseFillRegular, IconPlusOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DockZone, LayoutState, PaneNode, TabId } from '../contract/types.ts'
-import { getTab } from '../engine/tree.ts'
+import { dockPaneIds, getPane, getTab } from '../engine/tree.ts'
 import type { PaneCallbacks, SplitBlock } from './render.ts'
 import { TabMenu } from './TabMenu.tsx'
 import { TabTitle } from './TabTitle.tsx'
@@ -249,12 +249,20 @@ export function TabStrip({ state, pane, callbacks }: TabPanelProps): ReactNode {
           const tab = getTab(state, tabId)
           const selected = tabId === pane.activeTabId
           const closable = callbacks.canCloseTab(tabId)
-          // The close family's other two items act on THIS pane's tabs, so they
-          // are computed here rather than asked of the embedder: an item only
-          // exists while it has something to close. "To the right" is what the
-          // name says — the tabs after this one, never this one.
-          const closeOthers = pane.tabs.filter(id => id !== tabId && callbacks.canCloseTab(id))
-          const closeToRight = pane.tabs.slice(index + 1).filter(id => callbacks.canCloseTab(id))
+          // The close family spans the whole STRIP, not one pane. A pane here
+          // often holds a single tab — every tab its own pane — and a pane-scoped
+          // answer would then leave every family item with nothing to offer.
+          // Left and right are what the names say: the tabs on either side of
+          // this one, never this one.
+          const strip = dockPaneIds(state).flatMap(id => getPane(state, id).tabs)
+          const at = strip.indexOf(tabId)
+          /* v8 ignore next -- the pressed tab is in the strip it was rendered from. */
+          const before = at === -1 ? [] : strip.slice(0, at)
+          /* v8 ignore next -- see above. */
+          const after = at === -1 ? [] : strip.slice(at + 1)
+          const closeOthers = strip.filter(id => id !== tabId && callbacks.canCloseTab(id))
+          const closeToLeft = before.filter(id => callbacks.canCloseTab(id))
+          const closeToRight = after.filter(id => callbacks.canCloseTab(id))
           // A pane's lone unclosable chip is a label, not a choice: there is
           // no other tab to select against and nothing to do to it.
           const quiet = !closable && pane.tabs.length === 1
@@ -343,13 +351,17 @@ export function TabStrip({ state, pane, callbacks }: TabPanelProps): ReactNode {
                     labels={callbacks.labels}
                     anchor={menu.anchor}
                     onClose={closable ? () => { setMenu(undefined); callbacks.onCloseTab(tabId) } : undefined}
-                    onCloseOthers={closeOthers.length === 0 ? undefined : () => {
+                    onCloseToLeft={closeToLeft.length === 0 ? undefined : () => {
                       setMenu(undefined)
-                      for (const id of closeOthers) callbacks.onCloseTab(id)
+                      for (const id of closeToLeft) callbacks.onCloseTab(id)
                     }}
                     onCloseToRight={closeToRight.length === 0 ? undefined : () => {
                       setMenu(undefined)
                       for (const id of closeToRight) callbacks.onCloseTab(id)
+                    }}
+                    onCloseOthers={closeOthers.length === 0 ? undefined : () => {
+                      setMenu(undefined)
+                      for (const id of closeOthers) callbacks.onCloseTab(id)
                     }}
                     onDismiss={() => { setMenu(undefined) }}
                     extras={callbacks.renderTabMenuItems?.(tab, () => { setMenu(undefined) })}

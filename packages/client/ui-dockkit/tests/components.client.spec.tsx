@@ -668,10 +668,11 @@ describe('DockSurface', () => {
     expect(fileChip.querySelector('[data-dockkit-tab-close]')).not.toBeNull()
 
     // The menu still opens on the withheld chip: the close family acts on the
-    // pane's other tabs, and the embedder's items remain reachable.
+    // strip's other tabs, and the embedder's items remain reachable. This is the
+    // strip's FIRST tab, so it has nothing to its left.
     fireEvent.contextMenu(seedChip)
     expect(screen.getAllByRole('menuitem').map(item => item.textContent))
-      .toEqual([TEST_LABELS.closeOtherTabs, TEST_LABELS.closeTabsToRight, 'embedder item'])
+      .toEqual([TEST_LABELS.closeTabsToRight, TEST_LABELS.closeOtherTabs, 'embedder item'])
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(fileChip)

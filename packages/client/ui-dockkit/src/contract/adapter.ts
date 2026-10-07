@@ -35,8 +35,10 @@ export interface DockLabels {
   readonly closeTabKeys?: readonly string[] | undefined
   /** Destroy every tab in this pane except this one. */
   readonly closeOtherTabs: string
-  /** Destroy this tab and every tab after it in this pane. */
+  /** Destroy every tab after this one in this pane. */
   readonly closeTabsToRight: string
+  /** Destroy every tab before this one in this pane. */
+  readonly closeTabsToLeft: string
   /** The strip's add control, which seats the embedder's seeded tab. */
   readonly addTab: string
   /** Send a floating panel back into the docked tree. */

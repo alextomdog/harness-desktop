@@ -34,15 +34,20 @@ export interface TabMenuProps {
   /** Close the tab; `undefined` removes the kit's item, leaving the extras only. */
   readonly onClose: (() => void) | undefined
   /**
-   * Close every other tab in the pane; `undefined` removes the item, which is
-   * how a pane holding one tab offers no "close others".
+   * Close every tab before this one in the strip; `undefined` removes the item,
+   * which is how the first tab offers no "close to the left".
    */
-  readonly onCloseOthers: (() => void) | undefined
+  readonly onCloseToLeft: (() => void) | undefined
   /**
    * Close this tab and every tab after it in the pane; `undefined` removes the
    * item, which is how the last tab offers no "close to the right".
    */
   readonly onCloseToRight: (() => void) | undefined
+  /**
+   * Close every other tab in the pane; `undefined` removes the item, which is
+   * how a pane holding one tab offers no "close others".
+   */
+  readonly onCloseOthers: (() => void) | undefined
   /** Dismiss without acting. */
   readonly onDismiss: () => void
   /** Embedder items, rendered after the kit's own; absent means none. */
@@ -63,11 +68,13 @@ function placeMenu(anchor: HTMLElement, menu: HTMLElement): CSSProperties {
 }
 
 /** The actions menu body, anchored to the control that opened it. */
-export function TabMenu({ labels, anchor, onClose, onCloseOthers, onCloseToRight, onDismiss, extras }: TabMenuProps): ReactNode {
+export function TabMenu({
+  labels, anchor, onClose, onCloseToLeft, onCloseToRight, onCloseOthers, onDismiss, extras,
+}: TabMenuProps): ReactNode {
   const self = useRef<HTMLDivElement | null>(null)
   const [position, setPosition] = useState<CSSProperties | undefined>(undefined)
-  const hasItems = onClose !== undefined || onCloseOthers !== undefined || onCloseToRight !== undefined
-    || Children.toArray(extras).some(item => item !== '')
+  const hasItems = onClose !== undefined || onCloseToLeft !== undefined || onCloseToRight !== undefined
+    || onCloseOthers !== undefined || Children.toArray(extras).some(item => item !== '')
 
   useLayoutEffect(() => {
     if (self.current === null) return
@@ -131,15 +138,21 @@ export function TabMenu({ labels, anchor, onClose, onCloseOthers, onCloseToRight
         </button>
       )}
       {/* The rest of the close family sits with the close item, in the order the
-          editor's own tab menu lists them. */}
-      {onCloseOthers !== undefined && (
-        <button type="button" role="menuitem" className={css.menuItem} data-dockkit-menu-close-others onClick={onCloseOthers}>
-          {labels.closeOtherTabs}
+          editor's own tab menu lists them: this tab, the ones before it, the
+          ones after it, then every other one. */}
+      {onCloseToLeft !== undefined && (
+        <button type="button" role="menuitem" className={css.menuItem} data-dockkit-menu-close-left onClick={onCloseToLeft}>
+          {labels.closeTabsToLeft}
         </button>
       )}
       {onCloseToRight !== undefined && (
         <button type="button" role="menuitem" className={css.menuItem} data-dockkit-menu-close-right onClick={onCloseToRight}>
           {labels.closeTabsToRight}
+        </button>
+      )}
+      {onCloseOthers !== undefined && (
+        <button type="button" role="menuitem" className={css.menuItem} data-dockkit-menu-close-others onClick={onCloseOthers}>
+          {labels.closeOtherTabs}
         </button>
       )}
       {/* Embedder items last: the kit's own item is the same in every menu, so

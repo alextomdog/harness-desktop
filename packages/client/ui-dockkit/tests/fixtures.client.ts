@@ -43,6 +43,7 @@ export const TEST_LABELS: DockLabels = {
   closeTab: 'close',
   closeOtherTabs: 'close others',
   closeTabsToRight: 'close to the right',
+  closeTabsToLeft: 'close to the left',
   addTab: 'new tab',
   dockFloat: 'dock',
   closeFloat: 'close panel',
