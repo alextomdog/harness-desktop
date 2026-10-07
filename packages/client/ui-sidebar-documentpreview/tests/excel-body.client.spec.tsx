@@ -15,7 +15,12 @@ import { LazyExcelBody } from '../src/client/excel/LazyExcelBody.tsx'
 import { LoadingIndicator } from '../src/client/LoadingIndicator.tsx'
 
 const props = { content: { kind: 'bytes', data: new Uint8Array([1]) }, limits: Config({}).excel, t: makeTranslate(en), resourceAddress: 'dsh-resource://file/session/s1/book.xlsx' } as ExcelBodyProps
-const loadedProps = { ...props, format: 'xlsx', loading: <LoadingIndicator label={en.loading} /> } satisfies LoadedExcelBodyProps
+const loadedProps = {
+  ...props, format: 'xlsx', loading: <LoadingIndicator label={en.loading} />,
+  // The resolved file travels from the main bundle, so the lazy renderer shares
+  // no module with it.
+  file: { sessionId: 's1', path: 'book.xlsx' },
+} as unknown as LoadedExcelBodyProps
 const value = { sheets: [{ name: 'Budget', celldata: [] }], missingResults: 0, unsupportedFeatures: [] }
 const formulaValue = { sheets: [{ name: 'Budget', celldata: [{ r: 0, c: 0, v: { f: '=SUM(1,2)', m: '' } }] }], missingResults: 1, unsupportedFeatures: [] }
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); vi.restoreAllMocks() })

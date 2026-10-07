@@ -13,7 +13,7 @@
  * vanished on save would be worse than a grid that cannot save at all. When any
  * of that fails the grid stays read-only and says why.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Workbook } from '@fortune-sheet/react'
 import type { Sheet } from '@fortune-sheet/core'
 import { Button, IconWarningTriangleOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -23,7 +23,6 @@ import type { ExcelPreview } from './model.ts'
 import type { LoadedExcelBodyProps } from './LazyExcelBody.tsx'
 import { parseExcel } from './parse.ts'
 import { applyEdits } from './writeback.ts'
-import { hostFileOf } from '../rpc.ts'
 import css from './ExcelBody.module.css'
 
 type State = { data: Uint8Array<ArrayBuffer>; format: ExcelFormat } & ({ value: ExcelPreview } | { error: string })
@@ -39,7 +38,7 @@ const SAVE_DEBOUNCE_MS = 900
  * @param props - Complete workbook bytes, limits, the save face, and locale.
  * @returns An isolated spreadsheet surface with cancellable loading.
  */
-export function ExcelBody({ content, format, limits, t, loading, save, version, resourceAddress }: LoadedExcelBodyProps): ReactNode {
+export function ExcelBody({ content, format, limits, t, loading, save, version, file }: LoadedExcelBodyProps): ReactNode {
   const data = content.kind === 'bytes' ? content.data : undefined
   const [state, setState] = useState<State>()
   const [attempt, setAttempt] = useState(0)
@@ -52,7 +51,6 @@ export function ExcelBody({ content, format, limits, t, loading, save, version, 
   // same grid twice.
   const writtenRef = useRef<readonly Sheet[] | undefined>(undefined)
   const workbookRef = useRef<HTMLDivElement>(null)
-  const file = useMemo(() => hostFileOf(resourceAddress), [resourceAddress])
   const parsed = state !== undefined && !('error' in state) ? state.value : undefined
   // A writer for this format, a version to guard on, and nothing the writer drops.
   const writable = format === 'xlsx' && version !== undefined && parsed !== undefined
