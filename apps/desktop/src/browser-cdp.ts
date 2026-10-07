@@ -33,10 +33,13 @@ export function isDesktopBrowserCommandRequest(message: unknown): message is Des
   if (candidate.params !== undefined
     && (typeof candidate.params !== 'object' || candidate.params === null || Array.isArray(candidate.params))) return false
   if (candidate.eventsSince !== undefined && !Number.isSafeInteger(candidate.eventsSince)) return false
-  // A command needs both halves, a listing carries neither, and an event read
-  // carries the lease plus the sequence it resumes after.
+  // A listing carries no lease; everything else does. A method makes it a command,
+  // and a lease without one is an event-log read — whose resume point is optional,
+  // because the first read has nothing to resume from. Requiring the sequence here
+  // made every first read an invalid message, which the shell answers by killing
+  // the Host it came from.
   if (candidate.lease === undefined) return candidate.method === undefined && candidate.eventsSince === undefined
-  return candidate.method !== undefined || candidate.eventsSince !== undefined
+  return true
 }
 
 /**
