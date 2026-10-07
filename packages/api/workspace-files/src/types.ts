@@ -195,6 +195,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace-file/too-large': { readonly path: string; readonly limit: number }
     /** The content read so far is not decodable UTF-8 text, or the page carries NUL bytes. */
     'workspace-file/not-text': { readonly path: string }
+    /**
+     * The write's basis no longer matches the file: something else — an agent,
+     * another surface, the same reader in another window — wrote it since it was
+     * read. Nothing was written, so the caller can re-read and retry.
+     */
+    'workspace-file/stale-version': { readonly path: string; readonly version: string }
     /** The path is not a regular file, so it has no text to read. */
     'workspace-file/not-regular-file': {
       readonly path: string

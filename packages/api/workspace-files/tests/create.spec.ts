@@ -163,6 +163,36 @@ describe('workspaceFiles.renameEntry', () => {
   })
 })
 
+describe('workspaceFiles.write', () => {
+  it('replaces a file under the version its reader saw', async () => {
+    await writeFile(join(workspace, 'edit.md'), 'before', 'utf8')
+    const read = await harness.endpoint().read(harness.scope, 'edit.md', {}, signal())
+    const written = await harness.endpoint().write(harness.scope, 'edit.md', 'after', read.version, signal())
+    // A new version, because the bytes changed: the next write's basis.
+    expect(written.version).not.toBe(read.version)
+    expect(await readFile(join(workspace, 'edit.md'), 'utf8')).toBe('after')
+  })
+
+  it('refuses a write whose basis moved, leaving the other writer\'s bytes alone', async () => {
+    await writeFile(join(workspace, 'race.md'), 'first', 'utf8')
+    const read = await harness.endpoint().read(harness.scope, 'race.md', {}, signal())
+    // Someone else — the agent, another surface, this reader in another window —
+    // writes it. The editor's basis is stale from here on.
+    await writeFile(join(workspace, 'race.md'), 'theirs', 'utf8')
+    const failure = await failureOf(
+      harness.endpoint().write(harness.scope, 'race.md', 'mine', read.version, signal()),
+    )
+    expect(failure.code).toBe('workspace-file/stale-version')
+    expect(await readFile(join(workspace, 'race.md'), 'utf8')).toBe('theirs')
+  })
+
+  it('writes unconditionally when the caller names no version', async () => {
+    await writeFile(join(workspace, 'plain.md'), 'old', 'utf8')
+    await harness.endpoint().write(harness.scope, 'plain.md', 'new', undefined, signal())
+    expect(await readFile(join(workspace, 'plain.md'), 'utf8')).toBe('new')
+  })
+})
+
 describe('workspaceFiles.deleteEntry', () => {
   it('deletes a file and reports what it was', async () => {
     await writeFile(join(workspace, 'gone.md'), 'x', 'utf8')

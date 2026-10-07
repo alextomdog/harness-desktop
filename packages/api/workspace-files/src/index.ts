@@ -10,12 +10,13 @@
  * the two creates remain workspace-scoped. File-kind checks and configured read
  * caps apply to every preview.
  *
- * `createFile` and `createDirectory` are this namespace's only mutations and the
- * only methods here that reach a fenced write path. Both are create-if-absent,
- * both refuse a path outside the Session's workspace root, and both fence the
- * write to that root explicitly rather than inheriting the deployment default,
- * which is calibrated for agent tool calls rather than the operator's own tree
- * actions.
+ * `createFile`, `createDirectory`, `write`, `renameEntry` and `deleteEntry` are
+ * this namespace's mutations. The creates are create-if-absent, the rename
+ * changes one segment, the delete refuses a link, and `write` replaces a whole
+ * file under the version its reader saw. Every one of them refuses a path
+ * outside the Session's workspace root and fences the write to that root
+ * explicitly rather than inheriting the deployment default, which is calibrated
+ * for agent tool calls rather than the operator's own tree actions.
  *
  * A page is cut from `streamText`, which decodes and rejects non-UTF-8 as it
  * goes, so the file is read only up to the first character past the page and
@@ -30,7 +31,7 @@ import { posix, win32 } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-fs'
-import type { FsDirEntry, FsInfo, FsPathInfo, FsTarget, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
+import type { FsDirEntry, FsInfo, FsPathInfo, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
@@ -267,6 +268,61 @@ export class WorkspaceFiles extends TypertRemoteService {
       throw new RemoteError('workspace-file/not-text', `"${path}" contains NUL bytes`, { path })
     }
     return { ...this.statOf(target, info), offset, text: page.text, lines: page.lines, eof: page.eof }
+  }
+
+  /**
+   * Replace one file's whole content, refusing a write whose basis the file has
+   * moved past.
+   *
+   * The caller passes the version it read; a file written since then — by the
+   * agent, by another surface, by the same reader in another window — is left
+   * alone and answers `workspace-file/stale-version`, so an editor never
+   * silently discards a change it did not see. Omitting the version writes
+   * unconditionally, which is what creating a file the caller knows is absent
+   * wants.
+   * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+   * @param path - workspace path of the file to write.
+   * @param content - the complete new content.
+   * @param expectedVersion - the version the caller read, or `undefined` to write unconditionally.
+   * @param signal - caller cancellation.
+   * @returns the file at its new version.
+   */
+  @Remote
+  async write(
+    workspaceFileScope: WorkspaceFileScope,
+    path: string,
+    content: string,
+    expectedVersion: string | undefined,
+    signal: AbortSignal,
+  ): Promise<WorkspaceFileStat> {
+    signal.throwIfAborted()
+    const { workspaceRoot, sessionId } = workspaceFileScope
+    const { target } = await this.locateFile(workspaceFileScope, path, signal)
+    const expected: FsWriteIntent | undefined = expectedVersion === undefined
+      ? undefined
+      : { kind: 'replaceIfVersion', version: expectedVersion as FsVersion }
+    let outcome: FsWriteOutcome
+    try {
+      outcome = await this.ctx.fs.writeText(target, content, expected, signal,
+        { mode: 'workspace-write', workspaceRoot, sessionId })
+    } catch (error: unknown) {
+      const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+      if (code === 'FS_STALE_VERSION') {
+        throw new RemoteError(
+          'workspace-file/stale-version',
+          `"${path}" changed since it was read`,
+          { path, version: expectedVersion ?? '' },
+          { cause: error },
+        )
+      }
+      throw this.refusalOf(error, path) ?? error
+    }
+    // Re-observed, not the pre-write stat: the size and modification time a
+    // reader sees must describe the bytes that are there now.
+    const after = await this.ctx.fs.stat(target, signal)
+    /* v8 ignore next -- the write just published this file, so the probe cannot miss it. */
+    if (after === undefined) throw new Error(`"${path}" vanished between its write and its stat`)
+    return { ...this.statOf(target, after), version: String(outcome.version) }
   }
 
   /**
