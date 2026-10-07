@@ -14,7 +14,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { DesktopBrowserControl, DesktopBrowserEvent, DesktopBrowserPage } from './browser-cdp.ts'
+import type { DesktopBrowserCapture, DesktopBrowserControl, DesktopBrowserEvent, DesktopBrowserPage } from './browser-cdp.ts'
 
 /** The page list, and the page one call addresses. */
 interface Target {
@@ -276,7 +276,7 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       render: (_args, value) => [{
         type: 'text',
         text: value.messages.length === 0
-          ? 'No console messages captured.'
+          ? 'No console messages captured since this page attached.'
           : value.messages.map(message => `[${message.type}] ${message.text}`).join('\n'),
       }],
     },
@@ -284,7 +284,9 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       const { page } = await resolveTarget(control, args.pageIdx)
       if (page === undefined) throw new Error('no page to read')
       const wanted = args.types === undefined || args.types.length === 0 ? undefined : new Set(args.types)
-      const messages = consoleMessagesOf(await control.events(page.lease))
+      const capture = await control.events(page.lease)
+      requireDomains(capture, CONSOLE_DOMAINS)
+      const messages = consoleMessagesOf(capture.events)
         .filter(message => wanted === undefined || wanted.has(message.type))
       return { messages: messages.slice(-pageSizeOf(args.pageSize)) }
     },
@@ -323,7 +325,7 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       render: (_args, value) => [{
         type: 'text',
         text: value.requests.length === 0
-          ? 'No requests captured.'
+          ? 'No requests captured since this page attached; reload it to capture its load.'
           : value.requests.map(request => `${request.method} ${request.url} → ${request.status}`).join('\n'),
       }],
     },
@@ -333,12 +335,39 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       const wanted = args.methods === undefined || args.methods.length === 0
         ? undefined
         : new Set(args.methods.map(method => method.toUpperCase()))
-      const requests = networkRequestsOf(await control.events(page.lease)).filter(request =>
+      const capture = await control.events(page.lease)
+      requireDomains(capture, [NETWORK_DOMAIN])
+      const requests = networkRequestsOf(capture.events).filter(request =>
         (args.urlFilter === undefined || request.url.includes(args.urlFilter))
         && (wanted === undefined || wanted.has(request.method)))
       return { requests: requests.slice(-pageSizeOf(args.pageSize)) }
     },
   }))
+}
+
+/** The domains a console listing reads. */
+const CONSOLE_DOMAINS = ['Runtime.enable', 'Log.enable'] as const
+
+/** The domain a traffic listing reads. */
+const NETWORK_DOMAIN = 'Network.enable'
+
+/**
+ * Refuse a listing whose domain never started reporting.
+ *
+ * An empty list means "nothing happened yet"; a domain that would not enable means
+ * "this page cannot tell you". The two must not look the same — and they did, until
+ * the shell started carrying the reason.
+ * @param capture - the page's capture.
+ * @param domains - the domains this listing needs.
+ * @throws when one refused, naming it and its reason.
+ */
+function requireDomains(capture: DesktopBrowserCapture, domains: readonly string[]): void {
+  for (const domain of domains) {
+    const refusal = capture.refused.find(entry => entry.domain === domain)
+    if (refusal !== undefined) {
+      throw new Error(`this page refused to report ${domain.replace('.enable', '')}: ${refusal.reason}`)
+    }
+  }
 }
 
 /** How many entries a listing returns when the caller names no size. */

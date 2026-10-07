@@ -80,8 +80,16 @@ describe('installDesktopBrowserControl', () => {
     const request = sent[0]!
     expect(request).toMatchObject({ lease: 'l1', eventsSince: 7 })
     expect(request.method).toBeUndefined()
-    answer(control, request, { events: [{ seq: 8, method: 'Log.entryAdded', params: { entry: { text: 'hi' } } }] })
-    await expect(events).resolves.toEqual([{ seq: 8, method: 'Log.entryAdded', params: { entry: { text: 'hi' } } }])
+    // A refusal travels with the events: an empty list and a domain that never
+    // started reporting must not look the same to the tool that reads them.
+    answer(control, request, {
+      events: [{ seq: 8, method: 'Log.entryAdded', params: { entry: { text: 'hi' } } }],
+      refused: [{ domain: 'Network.enable', reason: 'denied' }],
+    })
+    await expect(events).resolves.toEqual({
+      events: [{ seq: 8, method: 'Log.entryAdded', params: { entry: { text: 'hi' } } }],
+      refused: [{ domain: 'Network.enable', reason: 'denied' }],
+    })
   })
 
   it('claims its own replies and leaves other messages alone', () => {

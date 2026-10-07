@@ -65,8 +65,9 @@ export async function answerBrowserCommand(
       return
     }
     if (request.method === undefined) {
-      // The event log the debugger captured, resumed after what the Host saw.
-      reply({ events: guests.events(request.lease, request.eventsSince) })
+      // The event log the debugger captured, resumed after what the Host saw, with
+      // the domains that refused to report so an empty list can explain itself.
+      reply({ ...guests.events(request.lease, request.eventsSince) })
       return
     }
     const result = await guests.command(request.lease, request.method ?? '', request.params)

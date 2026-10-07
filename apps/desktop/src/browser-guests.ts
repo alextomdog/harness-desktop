@@ -27,6 +27,19 @@ export interface DesktopBrowserEvent {
  */
 const MAX_CAPTURED_EVENTS = 1_000
 
+/** One protocol domain that refused to start reporting, and why. */
+export interface DesktopBrowserRefusal {
+  readonly domain: string
+  readonly reason: string
+}
+
+/** What capture holds for one page: the events, and the domains that refused. */
+interface Capture {
+  readonly events: DesktopBrowserEvent[]
+  next: number
+  readonly refused: DesktopBrowserRefusal[]
+}
+
 /** The domains whose events the tools read; enabling them is what starts capture. */
 const CAPTURED_DOMAINS = ['Runtime.enable', 'Log.enable', 'Network.enable'] as const
 
@@ -35,7 +48,7 @@ export class DesktopBrowserGuests {
   private readonly partitions = new Map<string, string>()
   private readonly leases = new Map<DesktopBrowserLeaseId, GuestLease>()
   /** Captured events per guest, oldest first, and the sequence the next one takes. */
-  private readonly captured = new Map<WebContents, { events: DesktopBrowserEvent[]; next: number }>()
+  private readonly captured = new Map<WebContents, Capture>()
 
   /** @param hostUrl - current authenticated DSH Host, which guests cannot request. */
   constructor(private readonly hostUrl: () => string | undefined) {}
@@ -198,16 +211,27 @@ export class DesktopBrowserGuests {
   }
 
   /**
-   * The events captured for one page after a point.
+   * The events captured for one page after a point, and the domains that refused.
+   *
+   * The refusals travel with the events because an empty list and a domain that
+   * never started reporting look identical to a reader, and a silent catch made
+   * them identical to me as well: two working tools returned empty lists and
+   * nothing anywhere said why.
    * @param leaseId - the lease received from the Host.
    * @param since - the last sequence the caller already saw, or absent for everything held.
-   * @returns the new events, oldest first.
+   * @returns the new events, oldest first, and the domains that would not report.
    */
-  events(leaseId: string, since?: number): readonly DesktopBrowserEvent[] {
+  events(leaseId: string, since?: number): {
+    readonly events: readonly DesktopBrowserEvent[]
+    readonly refused: readonly DesktopBrowserRefusal[]
+  } {
     const guest = this.guestOf(leaseId)
     const held = this.captured.get(guest)
-    if (held === undefined) return []
-    return since === undefined ? held.events : held.events.filter(event => event.seq > since)
+    if (held === undefined) return { events: [], refused: [] }
+    return {
+      events: since === undefined ? [...held.events] : held.events.filter(event => event.seq > since),
+      refused: held.refused,
+    }
   }
 
   /** The live guest a lease names, or a refusal. */
@@ -228,7 +252,7 @@ export class DesktopBrowserGuests {
   private async attach(guest: WebContents): Promise<void> {
     if (!guest.debugger.isAttached()) {
       guest.debugger.attach('1.3')
-      const held = { events: [] as DesktopBrowserEvent[], next: 1 }
+      const held: Capture = { events: [], next: 1, refused: [] }
       this.captured.set(guest, held)
       guest.debugger.on('message', (_event, method, params) => {
         held.events.push({ seq: held.next++, method, params })
@@ -236,8 +260,16 @@ export class DesktopBrowserGuests {
       })
       guest.once('destroyed', () => { this.captured.delete(guest) })
       for (const domain of CAPTURED_DOMAINS) {
-        // A domain the page refuses is not fatal: the tools that read it say so.
-        await guest.debugger.sendCommand(domain).catch(() => undefined)
+        // A domain the page refuses is not fatal, but it IS recorded: a tool that
+        // silently reports nothing is worse than one that says what is missing.
+        try {
+          await guest.debugger.sendCommand(domain)
+        } catch (error: unknown) {
+          held.refused.push({
+            domain,
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        }
       }
     }
   }

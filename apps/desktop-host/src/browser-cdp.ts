@@ -28,6 +28,24 @@ export interface DesktopBrowserEvent {
   readonly params: unknown
 }
 
+/** One protocol domain that refused to start reporting, and why. */
+export interface DesktopBrowserRefusal {
+  readonly domain: string
+  readonly reason: string
+}
+
+/** What one page's capture holds. */
+export interface DesktopBrowserCapture {
+  /** The events, oldest first. */
+  readonly events: readonly DesktopBrowserEvent[]
+  /**
+   * The domains that would not report. Carried because an empty list and a domain
+   * that never started look identical to a reader — and did, to me, until a live
+   * run reported two working tools returning nothing.
+   */
+  readonly refused: readonly DesktopBrowserRefusal[]
+}
+
 /** What the Host asks of the shell. */
 export interface DesktopBrowserControl {
   /** The live pages, oldest first. */
@@ -35,12 +53,12 @@ export interface DesktopBrowserControl {
   /** Run one DevTools Protocol command against one page. */
   command(lease: string, method: string, params?: Record<string, unknown>): Promise<unknown>
   /**
-   * The events one page captured after a point.
+   * The events one page captured after a point, and the domains that refused.
    * @param lease - the page.
    * @param since - the last sequence already seen, or absent for everything held.
-   * @returns the new events, oldest first.
+   * @returns the new events and the refusals.
    */
-  events(lease: string, since?: number): Promise<readonly DesktopBrowserEvent[]>
+  events(lease: string, since?: number): Promise<DesktopBrowserCapture>
   /**
    * Route one message from the shell.
    * @param message - the message, as received.
@@ -97,11 +115,13 @@ export function installDesktopBrowserControl(deadlineMs = BROWSER_COMMAND_DEADLI
       if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
       return reply.result
     },
-    async events(lease, since): Promise<readonly DesktopBrowserEvent[]> {
+    async events(lease, since): Promise<DesktopBrowserCapture> {
       const reply = await ask({ lease, ...since === undefined ? {} : { eventsSince: since } })
       if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
-      const events = reply.events
-      return Array.isArray(events) ? events as readonly DesktopBrowserEvent[] : []
+      return {
+        events: Array.isArray(reply.events) ? reply.events as readonly DesktopBrowserEvent[] : [],
+        refused: Array.isArray(reply.refused) ? reply.refused as readonly DesktopBrowserRefusal[] : [],
+      }
     },
     handle(message: unknown): boolean {
       if (typeof message !== 'object' || message === null) return false
