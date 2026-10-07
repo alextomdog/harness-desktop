@@ -126,6 +126,11 @@ export class DesktopBrowserGuests {
         lease.guest = guest
         attachedLease = id
         lease.releaseInput = attachInput(guest, id)
+        // Attach now rather than on the first tool call. The protocol reports from
+        // the moment a domain is enabled, so a page that loads before anyone asks
+        // would have no traffic and no console to read — which is exactly what a
+        // live run found: two working tools returning empty lists.
+        void this.attach(guest).catch((error: unknown) => { console.error(error) })
         guest.once('destroyed', () => { lease.releaseInput?.(); this.leases.delete(id) })
       })
       guest.setWindowOpenHandler(({ url, postBody }) => {
