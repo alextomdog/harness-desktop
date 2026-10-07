@@ -568,6 +568,12 @@ export function SessionNodeItem({
     rowRef.current?.scrollIntoView({ block: 'nearest' })
     onReveal()
   }, [onReveal])
+  /**
+   * Where the row's secondary press landed: the open menu's anchor rect, so the
+   * list appears at the press rather than below a trigger button that no longer
+   * exists. `null` while no menu is open.
+   */
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null)
   // Figma session cell: pad 8, status slot 16, then a 4px title gap.
   const ownRow = (
     <div
@@ -582,6 +588,27 @@ export function SessionNodeItem({
       aria-selected={selected}
       aria-description={row.archived ? t('toast.archivedNotOpenable') : undefined}
       onClick={() => { onOpen(node.id) }}
+      // The row's own menu belongs to its secondary press: no trigger button sits
+      // in the strip, and the list opens where the press landed.
+      onContextMenu={row.blank
+        ? undefined
+        : (event) => {
+          event.preventDefault()
+          setMenuRect(new DOMRect(event.clientX, event.clientY, 0, 0))
+          setMenuOpen(true)
+        }}
+      // Shift+F10 and the dedicated menu key are the keyboard spelling of a
+      // secondary press. The row is the menu's only trigger now, so it carries
+      // that path itself rather than a button in the strip.
+      onKeyDown={row.blank
+        ? undefined
+        : (event) => {
+          if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return
+          event.preventDefault()
+          const rect = event.currentTarget.getBoundingClientRect()
+          setMenuRect(new DOMRect(rect.left, rect.bottom, 0, 0))
+          setMenuOpen(true)
+        }}
       onPointerEnter={marquee.enter}
       onPointerLeave={marquee.leave}
       draggable={draggable}
@@ -643,26 +670,22 @@ export function SessionNodeItem({
       {/* Trails the time so the marker occupies the same right-edge cell as
           the hover pin button that replaces it. */}
       {row.pinned && !row.archived && <PinnedIndicator t={t} />}
-      {/* The strip's clicks stay in the strip: the trigger and every
-          row.action entry act without also opening the row, so an entry's
-          button needs no propagation handling of its own. */}
+      {/* The strip's clicks stay in the strip: every row.action entry acts
+          without also opening the row, so an entry's button needs no propagation
+          handling of its own. The menu has no trigger here — the row's secondary
+          press opens it and supplies the anchor rect directly. */}
       {!row.blank && (
         <span className={css.rowActions} onClick={(e) => { e.stopPropagation() }}>
           <Menu
             open={menuOpen}
-            onClose={() => { setMenuOpen(false) }}
+            onClose={() => { setMenuOpen(false); setMenuRect(null) }}
             portal
             closeOnPointerLeave
-            anchor={(
-              <button
-                type="button"
-                className={css.iconButton}
-                aria-label={t('actions.session.aria', { name: title })}
-                onClick={() => { setMenuOpen(v => !v) }}
-              >
-                <IconEllipsisOutlineRegular />
-              </button>
-            )}
+            // The menu has no trigger to focus, so it takes the keyboard itself:
+            // its own keys (arrows, Home/End, Escape) are reachable from open.
+            autoFocus
+            getAnchorRect={() => menuRect}
+            anchor={<span />}
           >
             {renderSlot(
               'sidebar.workspaces.session.menu.item',

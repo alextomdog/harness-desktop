@@ -578,17 +578,18 @@ describe('workspace browser rows', () => {
       runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen} t={t} />)
-    const trigger = screen.getByRole('button', { name: '会话“One”的操作' })
-    fireEvent.click(trigger)
+    const row = screen.getByRole('treeitem')
+    // No trigger button in the strip: the row's secondary press opens the menu.
+    expect(screen.queryByRole('button', { name: '会话“One”的操作' })).toBeNull()
+    fireEvent.contextMenu(row)
     expect(screen.getByRole('menu')).toBeTruthy()
     expect(onOpen).not.toHaveBeenCalled()
     // Escape closes without selecting (Menu onClose path).
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
-    // The trigger toggles: a second click closes the menu it opened.
-    fireEvent.click(trigger)
-    fireEvent.click(trigger)
-    expect(screen.queryByRole('menu')).toBeNull()
+    // A second press opens it again; the row itself never opens.
+    fireEvent.contextMenu(row)
+    expect(screen.getByRole('menu')).toBeTruthy()
     expect(onOpen).not.toHaveBeenCalled()
   })
 
@@ -629,23 +630,21 @@ describe('workspace browser rows', () => {
       'sidebar.workspaces.session.row.action', { sessionId: node.id, displayTitle: 'One' }, undefined,
     )
     expect(screen.queryByRole('menuitem')).toBeNull()
-    const trigger = screen.getByRole('button', { name: '会话“One”的操作' })
-    trigger.focus()
-    fireEvent.click(trigger)
+    const row = screen.getByRole('treeitem')
+    fireEvent.contextMenu(row)
     expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Export'])
     expect(rendered).toHaveBeenCalledWith(
       'sidebar.workspaces.session.menu.item', { sessionId: node.id, displayTitle: 'One' }, [true, expect.any(Function)],
     )
     fireEvent.click(screen.getByRole('menuitem', { name: 'Export' }))
     expect(onEntry).toHaveBeenCalledWith(node.id, 'One', true)
-    // The entry dismissed the menu through the state pair; the list returns focus.
+    // The entry dismissed the menu through the state pair; the list is gone.
     expect(screen.queryByRole('menu')).toBeNull()
     await act(async () => { await Promise.resolve() })
-    expect(document.activeElement).toBe(trigger)
     expect(onOpen).not.toHaveBeenCalled()
   })
 
-  it('renders the row action list inside the actions area after the menu trigger', () => {
+  it('renders the row action list inside the actions area', () => {
     const onOpen = vi.fn()
     const onQuick = vi.fn()
     const renderSlot: RowRenderSlot = (name: RowSlotName) => name === 'sidebar.workspaces.session.row.action'
@@ -658,12 +657,10 @@ describe('workspace browser rows', () => {
       runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen} renderSlot={renderSlot} t={t} />)
-    const trigger = screen.getByRole('button', { name: '会话“One”的操作' })
     const quick = screen.getByRole('button', { name: 'Quick action' })
-    const actionsArea = trigger.closest('[class*="rowActions"]')
+    const actionsArea = quick.closest('[class*="rowActions"]')
     expect(actionsArea).not.toBeNull()
     expect(actionsArea?.contains(quick)).toBe(true)
-    expect(trigger.compareDocumentPosition(quick) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     fireEvent.click(quick)
     expect(onQuick).toHaveBeenCalledOnce()
     expect(onOpen).not.toHaveBeenCalled()
@@ -686,7 +683,7 @@ describe('workspace browser rows', () => {
       expect(screen.getAllByText('进行中')).toHaveLength(2)
       fireEvent.pointerLeave(wrapper)
       // Menu open (disabled=true) suppresses the card for the same hover.
-      fireEvent.click(screen.getByRole('button', { name: '会话“Hovered”的操作' }))
+      fireEvent.contextMenu(screen.getByRole('treeitem'))
       fireEvent.pointerEnter(wrapper)
       act(() => { vi.advanceTimersByTime(1000) })
       expect(screen.queryByText('1分钟前')).toBeNull()

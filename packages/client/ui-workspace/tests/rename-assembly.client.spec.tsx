@@ -15,7 +15,7 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
  * session-actions.client.spec, the row's list rendering with rows.client.spec.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import type { ISession } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { SessionSeq, type SessionId } from '@deepseek-ai/dsh-session/types'
@@ -123,26 +123,24 @@ describe('session rename through the assembled browser', () => {
     const view = runtime.renderRoot()
 
     const row = (await view.findByText('Persisted title')).closest('[role="treeitem"]')!
-    const trigger = within(row as HTMLElement).getByLabelText('会话“Persisted title”的操作')
-    fireEvent.click(trigger)
+    fireEvent.contextMenu(row as HTMLElement)
     expect(view.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
       '置顶会话', '重命名', '分叉会话', '归档会话', '删除会话', 'Export action', 'Last action',
     ])
     expect(view.getAllByRole('separator')).toHaveLength(1)
     const last = view.getByRole('menuitem', { name: 'Last action' })
     const exportRow = view.getByRole('menuitem', { name: 'Export action' })
-    trigger.focus()
-    fireEvent.keyDown(trigger, { key: 'End' })
+    // The menu takes the keyboard as it opens: the row has no trigger button for
+    // the keys to start from.
+    fireEvent.keyDown(view.getByRole('menu'), { key: 'End' })
     expect(document.activeElement).toBe(last)
     fireEvent.keyDown(last, { key: 'ArrowUp' })
     expect(document.activeElement).toBe(exportRow)
     fireEvent.click(exportRow)
     expect(selected).toHaveBeenCalledWith('export', SID, 'Persisted title')
-    // The plugin row dismissed the menu through the bound open-state hook;
-    // the list returns focus to the trigger.
+    // The plugin row dismissed the menu through the bound open-state hook.
     expect(view.queryByRole('menu')).toBeNull()
     await act(async () => { await Promise.resolve() })
-    expect(document.activeElement).toBe(trigger)
     await runtime.dispose()
   })
 
@@ -164,7 +162,7 @@ describe('session rename through the assembled browser', () => {
 
     // The current session's group auto-expands; open the row's action menu.
     const row = (await view.findByText('旧标题')).closest('[role="treeitem"]')!
-    fireEvent.click(within(row as HTMLElement).getByLabelText('会话“旧标题”的操作'))
+    fireEvent.contextMenu(row as HTMLElement)
     fireEvent.click(view.getByRole('menuitem', { name: '重命名', hidden: true }))
     // The rename row dismissed the menu; the dialog lives in the overlay list.
     expect(view.queryByRole('menu')).toBeNull()
@@ -206,7 +204,7 @@ describe('session rename through the assembled browser', () => {
     await runtime.flush()
 
     const row = (await view.findByText('旧标题')).closest('[role="treeitem"]')!
-    fireEvent.click(within(row as HTMLElement).getByLabelText('会话“旧标题”的操作'))
+    fireEvent.contextMenu(row as HTMLElement)
     fireEvent.click(view.getByRole('menuitem', { name: '重命名', hidden: true }))
     const input = await view.findByLabelText('会话名称')
     fireEvent.change(input, { target: { value: '新名' } })
