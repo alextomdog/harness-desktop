@@ -4,11 +4,24 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DocumentPreviewProps } from '../document/contract.ts'
 import { excelFormat, type ExcelFormat } from './format.ts'
 import type { ExcelLimits } from './model.ts'
-import { hostFileOf } from '../rpc.ts'
+import { hostFileOf, type SessionFile, type WriteWorkspaceFileOutcome } from '../rpc.ts'
 import { LoadingIndicator } from '../LoadingIndicator.tsx'
 
-/** Document input plus parser limits and localized copy. */
-export type ExcelBodyProps = DocumentPreviewProps & PropsLocale<'sidebarExcel'> & { readonly limits: ExcelLimits }
+/** Document input plus parser limits, the save face, and localized copy. */
+export type ExcelBodyProps = DocumentPreviewProps & PropsLocale<'sidebarExcel'> & {
+  readonly limits: ExcelLimits
+  /**
+   * Replace the workbook's bytes, guarded by the version it was read at.
+   * @param file - session and path decoded from the tab address.
+   * @param data - the workbook's complete new bytes.
+   * @param expectedVersion - the version those bytes were read at.
+   * @param signal - the save's own cancellation.
+   * @returns what the save did, including the version it produced.
+   */
+  readonly save: (
+    file: SessionFile, data: Uint8Array, expectedVersion: string, signal: AbortSignal,
+  ) => Promise<WriteWorkspaceFileOutcome>
+}
 
 /** Lazily loaded renderer input with the parser choice and main-bundle loading content. */
 export type LoadedExcelBodyProps = ExcelBodyProps & { readonly format: ExcelFormat; readonly loading: ReactNode }
