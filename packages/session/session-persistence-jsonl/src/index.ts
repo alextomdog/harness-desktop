@@ -447,8 +447,13 @@ class JsonlSessionPersistence extends SessionPersistence {
     signal?.throwIfAborted()
     await this.ensureRootEncoding()
     signal?.throwIfAborted()
-    /* v8 ignore next 3 -- an unmaterialized created Session has no directory to remove. */
-    if (this.tracker.pendingOf(id) !== undefined) {
+    if (options?.force === true) {
+      // A forced removal closes whatever handle this process holds first: the
+      // write lease it owns is the only thing between the caller and the
+      // artifacts, and the caller has said the Session goes.
+      await this.tracker.closeWriter(id)
+    } else if (this.tracker.pendingOf(id) !== undefined) {
+      /* v8 ignore next 3 -- an unmaterialized created Session has no directory to remove. */
       throw new Error(`cannot delete session "${id}": it is open in this process`)
     }
     const selected = await this.findLog(id, signal)

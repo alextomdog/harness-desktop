@@ -212,7 +212,11 @@ export class WorkspaceCommands {
       )
     }
     try {
-      await persistence.delete(request.sessionId)
+      // Forced by default: the user asked for this Session to be gone, so a
+      // handle this process happens to hold — the usual state of the
+      // conversation on screen — is closed rather than turned into a refusal.
+      // A writer in ANOTHER process still refuses, and nothing is written then.
+      await persistence.delete(request.sessionId, { force: true })
     } catch (error) {
       if (error instanceof SessionAlreadyOwnedError) {
         throw new RemoteError(

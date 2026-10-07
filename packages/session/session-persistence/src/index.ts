@@ -110,6 +110,15 @@ export interface SessionPersistenceListOptions {
 export interface SessionPersistenceDeleteOptions {
   /** Optional cancellation observed before the removal starts. */
   readonly signal?: AbortSignal
+  /**
+   * Close whatever handle holds the Session instead of refusing the removal.
+   * A Session this process has open still owns its artifacts through the
+   * backend's write lease, so without this the removal is refused; forcing is the
+   * caller saying the Session goes anyway, which is what a delete command in a
+   * user interface means. A holder in ANOTHER process is still refused, because
+   * this end cannot close it.
+   */
+  readonly force?: boolean
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -213,10 +222,13 @@ export abstract class SessionPersistence extends Service {
    * is REFUSED rather than removed, because its artifacts are still being
    * written and a removal would take a tail that has not landed. The backend's
    * own write ownership is the check, so the refusal covers every process and
-   * needs no separate liveness registry. A Session with no artifact is not an
-   * error: it answers `false`, so a retry after a lost race is harmless.
+   * needs no separate liveness registry;
+   * {@link SessionPersistenceDeleteOptions.force} closes this process's own
+   * holder and proceeds, while a holder in another process stays refused. A
+   * Session with no artifact is not an error: it answers `false`, so a retry
+   * after a lost race is harmless.
    * @param id - the stored Session to remove.
-   * @param options - optional cancellation.
+   * @param options - optional cancellation and whether to close a local holder.
    * @returns whether a stored Session was there to remove.
    */
   abstract delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<boolean>

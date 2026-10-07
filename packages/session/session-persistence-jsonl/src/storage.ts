@@ -500,6 +500,20 @@ export class JsonlBackendTracker {
   }
 
   /**
+   * Close the write handle one Session has open, awaiting the close so its write
+   * lease is already released. Read handles hold no lease, so closing the writer
+   * is what lets a forced removal take the artifacts.
+   * @param id - the Session whose open write handle closes.
+   */
+  async closeWriter(id: SessionId): Promise<void> {
+    const writer = this.writers.get(id)
+    // Absent or null: no write handle, or a claim mid-construction that has
+    // published no bytes and holds no lease. Either way there is nothing to close.
+    if (writer === undefined || writer === null) return
+    await writer.close()
+  }
+
+  /**
    * Drain and flush every active write handle — the service-wide durability
    * barrier behind `SessionPersistence.flush`.
    * @throws {AggregateError} naming each session whose flush failed; the

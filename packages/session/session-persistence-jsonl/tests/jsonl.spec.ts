@@ -1416,6 +1416,25 @@ describe('JsonlSessionPersistence: durability and crash semantics', () => {
     expect(await ctx.sessionPersistence.delete(m.id)).toBe(false)
   })
 
+  it('force delete closes this process\'s open handle, removes the session, and cannot resurrect it', async () => {
+    const m = meta('forced', '/work')
+    const handle = await ctx.sessionPersistence.create(m)
+    await handle.append(oneTurnLog())
+    const dir = sessionDir(root, '/work', m.id)
+
+    // The unforced form still refuses the open handle — the refusal is the
+    // storage layer's own safety property.
+    await expect(ctx.sessionPersistence.delete(m.id)).rejects.toBeInstanceOf(SessionAlreadyOwnedError)
+    // Forcing closes the holder and takes the artifacts: what a delete command
+    // in a user interface means.
+    expect(await ctx.sessionPersistence.delete(m.id, { force: true })).toBe(true)
+    await expect(stat(dir)).rejects.toThrow()
+    expect(await ctx.sessionPersistence.stat(m.id)).toBeUndefined()
+    // The handle is closed for good, so a later append cannot recreate the log
+    // of a Session the user removed.
+    await expect(handle.append(oneTurnLog())).rejects.toThrow()
+  })
+
   it('flush materializes an explicitly durable empty session without an event row', async () => {
     const m = meta('durable-empty', '/work')
     const handle = await ctx.sessionPersistence.create(m)
