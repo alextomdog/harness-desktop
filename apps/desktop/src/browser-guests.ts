@@ -256,10 +256,12 @@ export class DesktopBrowserGuests {
     const image = await this.guestOf(leaseId).capturePage()
     const bytes = format === 'jpeg' ? image.toJPEG(quality ?? 90) : image.toPNG()
     if (bytes.length === 0) {
-      // A guest that is not being composited has nothing painted to capture: a
-      // window that is minimized or hidden, or a sidebar that is collapsed. Saying
-      // so beats handing back an empty file that reads as a broken tool.
-      throw new Error('the page has no painted surface to capture (is the window shown and the sidebar open?)')
+      // Measured, not guessed: a live run read `innerWidth`/`innerHeight` of 0 from
+      // the page itself while its `visibilityState` said `visible`, and the webview
+      // element measured 0×0. The tab holding the page was not the one on screen,
+      // so there was nothing painted to take.
+      throw new Error('the page has no painted surface to capture: its view measures 0×0, '
+        + 'so the tab showing it is not the one on screen (or the sidebar is collapsed)')
     }
     return bytes
   }
