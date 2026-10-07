@@ -211,6 +211,13 @@ export class WorkspaceCommands {
         {},
       )
     }
+    // Take the session out of the live store first, by ASKING whoever holds it:
+    // the teardown handle is its owner's capability, so this command cannot
+    // detach it itself, and a session left live keeps its row on screen — the
+    // registry no longer places it, so it surfaces as ungrouped although its
+    // artifacts are gone. Detaching also closes the handle holding the write
+    // lease, which is what the removal below then takes.
+    await this.ctx.parallel('session/detach-request', { sessionId: request.sessionId })
     try {
       // Forced by default: the user asked for this Session to be gone, so a
       // handle this process happens to hold — the usual state of the

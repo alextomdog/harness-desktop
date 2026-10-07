@@ -44,6 +44,24 @@ function waitForIdle(ctx: Context, agent: Agent): Promise<void> {
 
 const text = (t: string): ContentBlock[] => [{ type: 'text', text: t }]
 
+describe('session/detach-request', () => {
+  it('takes a live agent down on request, so a removal leaves no live session behind', async () => {
+    const ctx = await harness()
+    const id = SessionId('detach-me')
+    await ctx.agents.create({ sessionId: id, agentOptions: { provider: 'mock', model: 'mock' } })
+    // Live in the store: the state that keeps a removed session's row on screen,
+    // because the registry no longer places it under any Workspace.
+    expect(ctx.sessions.get(id)).toBeDefined()
+
+    // The teardown handle is its owner's capability, so a caller that has to
+    // leave nothing behind asks for the teardown rather than reaching in.
+    await ctx.parallel('session/detach-request', { sessionId: id })
+
+    expect(ctx.sessions.get(id)).toBeUndefined()
+    expect(ctx.agents.get(id)).toBeUndefined()
+  })
+})
+
 /** Throw an arbitrary callback value to exercise the public unknown-error boundary. */
 function throwUnknown(value: unknown): never {
   throw value

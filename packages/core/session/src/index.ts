@@ -62,6 +62,18 @@ declare module '@deepseek-ai/cordis' {
      */
     'session/disposed'(this: Scoped<Session>, session: Session): void
     /**
+     * Ask whoever holds a session live to detach it, and await them.
+     *
+     * A session entered through `SessionStore.enter` leaves the store only when
+     * the holder calls the detacher it received — the capability is the holder's
+     * alone. A caller that must leave nothing behind therefore cannot do it
+     * itself and asks instead. Listeners detach the entries they own and return
+     * without acting when they own none.
+     * @param request - the session whose live holders detach it.
+     * @mode parallel
+     */
+    'session/detach-request'(request: { readonly sessionId: SessionId }): Promise<void> | void
+    /**
      * Post-commit, fire-and-forget append feed. The listener snapshot resolves
      * before the log push, but callbacks run after it; observer failures are
      * logged and contained without making the committed append fail.

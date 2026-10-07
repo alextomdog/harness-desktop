@@ -99,7 +99,7 @@ class FactoryOwnership {
   private accepting = true
   private readonly teardown = new AbortController()
   private readonly inactive = Promise.withResolvers<void>()
-  private readonly liveAgents = new Set<() => Promise<void>>()
+  private readonly liveAgents = new Map<SessionId, () => Promise<void>>()
   private startupTasks = new Set<Promise<void>>()
 
   constructor(private readonly fiber: Context['fiber']) {}
@@ -113,10 +113,29 @@ class FactoryOwnership {
     return this.accepting && !INACTIVE_STATES.has(this.fiber.state)
   }
 
-  /** Track one live agent's shared teardown until it has run. */
-  track(dispose: () => Promise<void>): () => void {
-    this.liveAgents.add(dispose)
-    return () => { this.liveAgents.delete(dispose) }
+  /**
+   * Track one live agent's shared teardown until it has run, keyed by its
+   * session so `session/detach-request` can name the agent it must take down.
+   */
+  track(id: SessionId, dispose: () => Promise<void>): () => void {
+    this.liveAgents.set(id, dispose)
+    return () => {
+      // A newer agent for the same session has replaced this one: forget only
+      // what is still ours.
+      if (this.liveAgents.get(id) === dispose) this.liveAgents.delete(id)
+    }
+  }
+
+  /**
+   * Tear down the live agent one session owns, if any, and await it. Nothing
+   * else can: the teardown is a capability this factory holds, and its disposal
+   * is what removes the session from the store.
+   * @param id - the session whose agent is torn down.
+   */
+  async remove(id: SessionId): Promise<void> {
+    const dispose = this.liveAgents.get(id)
+    if (dispose === undefined) return
+    await dispose()
   }
 
   /** Join config startup work that begins before an agent exists. */
@@ -141,7 +160,7 @@ class FactoryOwnership {
     this.teardown.abort(new Error('agent loop is not active'))
     this.inactive.resolve()
     await Promise.all([
-      ...[...this.liveAgents].map(dispose => dispose()),
+      ...[...this.liveAgents.values()].map(dispose => dispose()),
       ...this.startupTasks,
     ])
   }
@@ -366,6 +385,10 @@ export class AgentLoop extends Service implements AgentFactory {
     this.ownership = new FactoryOwnership(ctx.fiber)
     this.runtime = { ctx }
     ctx.effect(() => () => this.ownership.dispose(), 'agentLoop.transactions()')
+    // A removal that must leave nothing behind cannot detach a session itself:
+    // the teardown handle is the owner's. This factory owns one per live agent,
+    // so it answers the request by taking that agent down.
+    ctx.on('session/detach-request', ({ sessionId }) => this.ownership.remove(sessionId))
     ctx.effect(() => ctx.agents.setFactory(this), 'agentLoop.setFactory()')
     ctx.systemPrompt.variable('provider', context => context.agent?.options.provider)
     ctx.systemPrompt.variable('model', context => context.agent?.options.model)
@@ -569,7 +592,7 @@ export class AgentLoop extends Service implements AgentFactory {
         throw new AggregateError(failures, `agent "${id}" disposal failed`)
       }
     })())
-    const untrack = this.ownership.track(dispose)
+    const untrack = this.ownership.track(id, dispose)
     let unfollowOwner: () => Promise<void> | void
     try {
       unfollowOwner = ownerCtx.effect(function* () {

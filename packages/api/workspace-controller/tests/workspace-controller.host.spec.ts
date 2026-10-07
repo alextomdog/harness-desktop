@@ -61,7 +61,16 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
   const storageDomain = new DomainFacility(ctx, { backend: 'memory', routes: {} })
   ctx.storage.mount('domain', storageDomain)
   ctx.provide('storageDomain', storageDomain)
-  ctx.provide('sessionPersistence', { list: () => Promise.resolve([]) } as never)
+  // What the command asked of storage, in order: a test can then assert that the
+  // live holder was asked to detach BEFORE the artifact was taken.
+  const artifactSteps: string[] = []
+  ctx.provide('sessionPersistence', {
+    list: () => Promise.resolve([]),
+    delete: (id: SessionId) => {
+      artifactSteps.push(`remove:${String(id)}`)
+      return Promise.resolve(true)
+    },
+  } as never)
   await ctx.plugin(WorkspaceRegistry)
   const dispose = (): void => {}
   ctx.provide('typert', {
@@ -69,7 +78,7 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
     contexts: { configureHost: () => dispose },
   } as never)
   const controller = new WorkspaceController(ctx, options.systemDocuments === true ? {} : { documentsDirectory: root })
-  return { controller, ctx, root, storageDomain }
+  return { controller, ctx, root, storageDomain, artifactSteps }
 }
 
 function stageDir(root: string, name: string): string {
@@ -272,6 +281,24 @@ describe('WorkspaceController commands', () => {
     // Unarchive is idempotent: an id that is not archived is not an error.
     await expect(controller.unarchiveSession({ sessionId: session.id }))
       .resolves.toEqual({ archivedSessionIds: [] })
+  })
+
+  it('removes a session by asking its live holder to detach before it takes the artifact', async () => {
+    const { controller, ctx, artifactSteps } = await harness()
+    // A live session: what the registry counts as known, and what keeps a row on
+    // screen after the artifacts are gone.
+    const session = ctx.sessions.create()
+    const detaching = ctx.on('session/detach-request', ({ sessionId }) => {
+      artifactSteps.push(`detach:${String(sessionId)}`)
+    })
+
+    await expect(controller.deleteSession({ sessionId: session.id }))
+      .resolves.toEqual({ archivedSessionIds: [], pinnedSessionIds: [] })
+    // The order is the fix: detaching first is what takes the session out of the
+    // live store and closes the handle that holds its write lease, so the removal
+    // that follows takes a session with no holder left.
+    expect(artifactSteps).toEqual([`detach:${String(session.id)}`, `remove:${String(session.id)}`])
+    detaching()
   })
 
   it('pins only known unarchived Sessions and unpins idempotently', async () => {
