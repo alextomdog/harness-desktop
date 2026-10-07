@@ -14,6 +14,11 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+// Type-only: this is what puts `ctx.fs` on the context. The screenshot writes its
+// bytes through the same seam every other Host write uses.
+import type {} from '@deepseek-ai/dsh-fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { DesktopBrowserCapture, DesktopBrowserControl, DesktopBrowserEvent, DesktopBrowserPage } from './browser-cdp.ts'
 
 /** The page list, and the page one call addresses. */
@@ -102,7 +107,7 @@ async function waitForAddress(
  */
 export const browserToolsPlugin = {
   name: 'desktop-browser-tools',
-  inject: ['tools'],
+  inject: ['tools', 'fs'],
   apply(ctx: Context, control: DesktopBrowserControl): void {
     registerBrowserTools(ctx, control)
   },
@@ -242,6 +247,49 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       }
       const value = evaluation.result?.value
       return { value: typeof value === 'string' ? value : JSON.stringify(value ?? evaluation.result?.description ?? null) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'take_screenshot',
+    description: 'Capture a page of the built-in browser as an image, save it to a file, and return the path. '
+      + 'Read the file back with read_image to look at it.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to capture, as select_page lists it. Defaults to the only page.' },
+      format: { type: 'string', enum: ['png', 'jpeg'], description: 'Image format. Defaults to png.' },
+      quality: { type: 'number', description: 'JPEG quality 0-100. Ignored for png.' },
+      filePath: { type: 'string', description: 'Where to write the image. Defaults to a temporary file.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          path: { type: 'string', required: true },
+          bytes: { type: 'number', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Saved a ${String(value.bytes)}-byte screenshot to ${value.path}. Read it with read_image.`,
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to capture')
+      const format = args.format ?? 'png'
+      const shot = await control.command(page.lease, 'Page.captureScreenshot', {
+        format,
+        ...format === 'jpeg' && args.quality !== undefined ? { quality: args.quality } : {},
+        // The whole document, not just the part the pane happens to show: an agent
+        // reading a screenshot is usually looking for something below the fold.
+        captureBeyondViewport: true,
+      }) as { data?: string }
+      if (shot.data === undefined || shot.data === '') throw new Error('the page returned no image data')
+      const bytes = Buffer.from(shot.data, 'base64')
+      const path = args.filePath ?? join(tmpdir(), `dsh-browser-${String(Date.now())}.${format === 'jpeg' ? 'jpg' : 'png'}`)
+      const target = await ctx.fs.resolve(path)
+      await ctx.fs.writeBytes(target, new Uint8Array(bytes))
+      return { path, bytes: bytes.length }
     },
   }))
 
