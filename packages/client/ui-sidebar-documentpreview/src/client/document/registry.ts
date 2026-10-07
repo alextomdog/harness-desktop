@@ -25,6 +25,13 @@ export interface DocumentPreviewDefinition {
   readonly loading: DocumentLoadMode
   /** Whether the implementation consumes the document's wrap preference. */
   readonly wrap?: boolean
+  /**
+   * Whether this implementation shows the file's OWN text, so its reader may edit
+   * it in place and save the buffer back. A renderer that transforms what it shows
+   * — a converted document, a decoded image, a parsed workbook — leaves this off:
+   * there is no text of the reader's to write back.
+   */
+  readonly editable?: boolean
 }
 
 /**

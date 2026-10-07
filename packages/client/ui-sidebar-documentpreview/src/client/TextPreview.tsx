@@ -197,9 +197,20 @@ export function TextPreview({
     return { kind: 'text', pages: loaded, text: loaded.filter(page => page.lines > 0).map(page => page.text).join('\n'), eof: current.eof }
   }, [mode, loaded, current?.complete, current?.eof, current?.loadRevision, rendererReload, actions, tab.id])
 
-  // Editing needs the WHOLE file in hand: a save writes the entire buffer, so a
-  // partially loaded one would truncate everything past what was read.
-  const editable = content?.kind === 'text' && content.eof === true && current?.version !== undefined
+  // What editing would write back, when this file may be edited at all: the
+  // renderer must show the file's OWN text, the read must hold the WHOLE file (a
+  // save writes the entire buffer, so a partial one would truncate it), and bytes
+  // must survive a UTF-8 round trip — saving a lossy decode would corrupt them.
+  const editableText = useMemo((): string | undefined => {
+    if (selected?.editable !== true || current?.version === undefined) return undefined
+    if (content?.kind === 'text') return content.eof === true ? content.text : undefined
+    if (content?.kind !== 'bytes') return undefined
+    const decoded = new TextDecoder().decode(content.data)
+    const back = new TextEncoder().encode(decoded)
+    if (back.length !== content.data.length) return undefined
+    for (let at = 0; at < back.length; at += 1) if (back[at] !== content.data[at]) return undefined
+    return decoded
+  }, [selected?.editable, current?.version, content])
 
   // A known binary suffix with no matching renderer never reads: no plain-text
   // fallback, no viewer control, only the path, the unsupported line, and the
@@ -316,7 +327,7 @@ export function TextPreview({
             </button>
           </Tooltip>
         </span>
-        {editable && (
+        {editableText !== undefined && (
           <Tooltip label={t('edit.tool')} side="bottom" delayMs={500}>
             <button
               type="button"
@@ -365,9 +376,9 @@ export function TextPreview({
         {mode !== 'renderer' && !hasContent && current?.failure === undefined && (
           <LoadingIndicator label={t('loading')} />
         )}
-        {editing && editable && content?.kind === 'text' && (
+        {editing && editableText !== undefined && (
           <EditableTextBody
-            text={content.text}
+            text={editableText}
             version={current?.version ?? ''}
             reload={reload}
             save={(value, expectedVersion, signal) => save(file, value, expectedVersion, signal)}
@@ -378,7 +389,7 @@ export function TextPreview({
             }}
           />
         )}
-        {!(editing && editable) && content !== undefined && renderSlot('sidebar.right.tab.document', {
+        {!(editing && editableText !== undefined) && content !== undefined && renderSlot('sidebar.right.tab.document', {
           resourceAddress: tab.contentId, content, wrap: state.wrap, scrollportRef: bindScrollport,
           addResource: add, setResources: set,
         }, {
