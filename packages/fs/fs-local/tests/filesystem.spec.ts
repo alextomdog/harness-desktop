@@ -654,6 +654,44 @@ describe('writeText', () => {
   })
 })
 
+describe('writeBytes', () => {
+  it('writes bytes as they are, without decoding or line-ending rewriting', async () => {
+    // A zip header and a NUL: nothing a text write could carry unchanged.
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff, 0x0d, 0x0a, 0x10])
+    const target = await fs.resolve('book.xlsx')
+    const outcome = await fs.writeBytes(target, bytes)
+    expect(outcome.operation).toBe('create')
+    expect(Array.from(await readFile(join(dir, 'book.xlsx')))).toEqual(Array.from(bytes))
+  })
+
+  it('replaceIfVersion replaces at the observed version', async () => {
+    await writeFile(join(dir, 'book.xlsx'), Buffer.from([1, 2, 3]))
+    const target = await fs.resolve('book.xlsx')
+    const outcome = await fs.writeBytes(target, new Uint8Array([9, 8]), {
+      kind: 'replaceIfVersion', version: await versionOf(target),
+    })
+    expect(outcome.operation).toBe('update')
+    expect(Array.from(await readFile(join(dir, 'book.xlsx')))).toEqual([9, 8])
+  })
+
+  it('replaceIfVersion refuses a stale basis, leaving the other writer\'s bytes alone', async () => {
+    const path = join(dir, 'book.xlsx')
+    await writeFile(path, Buffer.from([1, 2, 3]))
+    const target = await fs.resolve('book.xlsx')
+    const stale = await versionOf(target)
+    await writeFile(path, Buffer.from([4, 5, 6]))
+    await expect(fs.writeBytes(target, new Uint8Array([7]), { kind: 'replaceIfVersion', version: stale }))
+      .rejects.toMatchObject({ code: 'FS_STALE_VERSION' })
+    expect(Array.from(await readFile(path))).toEqual([4, 5, 6])
+  })
+
+  it('rejects a directory target', async () => {
+    const target = await fs.resolve('.')
+    await expect(fs.writeBytes(target, new Uint8Array([1])))
+      .rejects.toMatchObject({ code: 'FS_NOT_REGULAR_FILE' })
+  })
+})
+
 describe('editText', () => {
   it('applies a literal edit at the matching version', async () => {
     await writeFile(join(dir, 'a.txt'), 'hello world')

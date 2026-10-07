@@ -623,7 +623,7 @@ async function throwGuardedCreateFailure(
  */
 export async function writeFileAtomic(
   absolutePath: string,
-  content: string,
+  content: string | Uint8Array,
   mode: number | undefined,
   signal: AbortSignal | undefined,
   internals: FsIoInternals = {},
@@ -658,7 +658,8 @@ export async function writeFileAtomic(
     if (platform === 'win32' && mode !== undefined) {
       await copyFileDacl(absolutePath, tempPath)
     }
-    await handle.writeFile(content, { encoding: 'utf8', ...signal ? { signal } : {} })
+    // Text carries its own encoding; bytes are written as they are.
+    await handle.writeFile(content, typeof content === 'string' ? { encoding: 'utf8', ...signal ? { signal } : {} } : { ...signal ? { signal } : {} })
     await handle.sync()
     await internals.inspectTemp?.({ stagingDir, tempPath })
     if (mode !== undefined) await handle.chmod(mode)

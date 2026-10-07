@@ -140,6 +140,8 @@ class TestFileSystem extends FileSystem {
     return result
   }
 
+  override async writeBytes(): Promise<never> { throw new Error('writeBytes is outside what this fake models') }
+
   override async writeText(target: FsTarget, content: string): Promise<FsWriteOutcome> {
     await mkdir(dirname(target.displayPath), { recursive: true })
     await writeFile(target.displayPath, content)

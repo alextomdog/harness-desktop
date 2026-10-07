@@ -143,6 +143,14 @@ export interface FsWriteOutcome {
   after: string
 }
 
+/** Outcome of a full-file byte write: no diff basis, because bytes have no lines. */
+export interface FsWriteBytesOutcome {
+  /** Whether the write created a new file or replaced an existing one. */
+  operation: 'create' | 'update'
+  /** Opaque version of the file after the write. */
+  version: FsVersion
+}
+
 /** Outcome of a directory creation. */
 export interface FsMkdirOutcome {
   /**
@@ -213,6 +221,8 @@ export type FsErrorCode =
   | 'FS_AMBIGUOUS_EDIT'
   | 'FS_EDIT_NOT_FOUND'
   | 'FS_ABORTED'
+  /** The backend has no path for this operation at all: not a failure of the call. */
+  | 'FS_UNSUPPORTED'
 
 /**
  * Typed filesystem error. Extends {@link HarnessError} so it carries a stable

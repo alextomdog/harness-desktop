@@ -77,6 +77,8 @@ class FakeFileSystem extends FileSystem {
     this.files.set(target.targetKey, content)
     return { operation: before !== null ? 'update' : 'create', version: FsVersion('v2'), before, after: content }
   }
+  override async writeBytes(): Promise<never> { throw new Error('writeBytes is outside what this fake models') }
+
   override async editText(target: FsTarget, edit: FsEditRequest): Promise<FsEditOutcome> {
     const content = this.files.get(target.targetKey) ?? ''
     const after = content.split(edit.oldString).join(edit.newString)

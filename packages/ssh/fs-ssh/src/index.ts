@@ -2,7 +2,7 @@
 import { posix } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { FileSystem, FsError } from '@deepseek-ai/dsh-fs'
-import type { FsDirEntry, FsEditOutcome, FsEditRequest, FsErrorCode, FsInfo, FsMkdirOutcome, FsMoveOutcome, FsPathInfo, FsRemoveOutcome, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
+import type { FsDirEntry, FsEditOutcome, FsEditRequest, FsErrorCode, FsInfo, FsMkdirOutcome, FsMoveOutcome, FsPathInfo, FsRemoveOutcome, FsTarget, FsVersion, FsWriteBytesOutcome, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-ssh'
@@ -14,6 +14,7 @@ const errorCodes: Record<FsErrorCode, true> = {
   FS_NOT_FOUND: true, FS_NOT_DIRECTORY: true, FS_NOT_TEXT: true, FS_NOT_REGULAR_FILE: true,
   FS_TOO_LARGE: true, FS_PERMISSION_DENIED: true, FS_SANDBOX_DENIED: true, FS_IO_ERROR: true,
   FS_STALE_VERSION: true, FS_NOT_OBSERVED: true, FS_AMBIGUOUS_EDIT: true, FS_EDIT_NOT_FOUND: true, FS_ABORTED: true,
+  FS_UNSUPPORTED: true,
 }
 
 /** Remote filesystem paired with the SSH subprocess and sandbox providers. */
@@ -84,6 +85,18 @@ export class SshFileSystem extends FileSystem {
   ): Promise<FsWriteOutcome> {
     const policy = sandboxPolicy ?? this.ctx.sandboxPolicy.resolve()
     return await this.call('fs.write', { target, content, expected, policy }, writeResultSchema, signal) as FsWriteOutcome
+  }
+
+  override async writeBytes(
+    target: FsTarget,
+    _content: Uint8Array,
+    _expected?: FsWriteIntent,
+    _signal?: AbortSignal,
+  ): Promise<FsWriteBytesOutcome> {
+    // The SSH service carries `fs.write`, a text write. Saying so beats writing
+    // something else: a binary document edited over SSH must fail loudly rather
+    // than land byte-mangled on the far side.
+    throw new FsError(`cannot write bytes to "${target.displayPath}": this backend carries text writes only`, 'FS_UNSUPPORTED')
   }
 
   override async editText(

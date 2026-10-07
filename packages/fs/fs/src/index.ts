@@ -23,6 +23,7 @@ import type {
   FsRemoveOutcome,
   FsTarget,
   FsVersion,
+  FsWriteBytesOutcome,
   FsWriteIntent,
   FsWriteOutcome,
 } from './types.ts'
@@ -44,6 +45,7 @@ export type {
   FsObservation,
   FsPathInfo,
   FsTarget,
+  FsWriteBytesOutcome,
   FsWriteIntent,
   FsWriteOutcome,
 } from './types.ts'
@@ -276,6 +278,30 @@ export abstract class FileSystem extends Service {
     signal?: AbortSignal,
     sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsWriteOutcome>
+
+  /**
+   * Atomically replace a whole file with bytes.
+   *
+   * The text write's sibling, for documents that are not text: a workbook, an
+   * archive, an image. The same version guard applies, so a binary file written
+   * under a stale basis is refused rather than clobbered, and the outcome carries
+   * no diff basis because bytes have no lines to diff.
+   * @param target - the resolved target to write.
+   * @param content - the complete new bytes.
+   * @param expected - the write intent guarding the write; omit for unconditional.
+   * @param signal - aborts before atomic publication takes effect.
+   * @param sandboxPolicy - the per-call mode and workspace root this write runs
+   *   under; a sandboxing backend fences the write by it, the bare backend
+   *   ignores it. Omit to leave the backend its own default.
+   * @returns the outcome, including the version the write produced.
+   */
+  abstract writeBytes(
+    target: FsTarget,
+    content: Uint8Array,
+    expected?: FsWriteIntent,
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsWriteBytesOutcome>
 
   /**
    * Atomically edit literal text. When supplied, the version guard is checked

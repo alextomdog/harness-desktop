@@ -22,6 +22,7 @@ import type {
   FsPathInfo,
   FsRemoveOutcome,
   FsTarget,
+  FsWriteBytesOutcome,
   FsWriteIntent,
   FsWriteOutcome,
 } from '@deepseek-ai/dsh-fs'
@@ -260,40 +261,79 @@ export class LocalFileSystem extends FileSystem {
     })
   }
 
+  /**
+   * Atomically replace a whole file with bytes: the text write's version guard
+   * without the text write's diff basis, because bytes have no lines to diff.
+   */
+  override async writeBytes(
+    target: FsTarget,
+    content: Uint8Array,
+    expected?: FsWriteIntent,
+    signal?: AbortSignal,
+  ): Promise<FsWriteBytesOutcome> {
+    return this.withLock(target.targetKey, async () => {
+      const existing = await probe(target.targetKey)
+      if (existing && existing.type !== 'file') {
+        throw new FsError(`cannot write "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
+      }
+
+      if (expected?.kind === 'replaceIfVersion') {
+        // The same stale guard the text write applies: the file must still exist
+        // at the version its owner observed.
+        if (!existing) throw new FsError(`cannot write "${target.displayPath}": file no longer exists`, 'FS_STALE_VERSION')
+        if (existing.version !== expected.version) {
+          throw new FsError(`cannot write "${target.displayPath}": file changed since it was read`, 'FS_STALE_VERSION')
+        }
+      } else if (expected?.kind === 'createIfAbsent' && existing) {
+        throw new FsError(`cannot overwrite existing "${target.displayPath}" without reading it first`, 'FS_NOT_OBSERVED')
+      }
+
+      await writeFileAtomic(
+        target.targetKey,
+        content,
+        existing?.mode,
+        signal,
+        this.internals,
+        expected?.kind === 'createIfAbsent' ? { displayPath: target.displayPath } : undefined,
+      )
+      const after = await probe(target.targetKey)
+      return { operation: existing ? 'update' : 'create', version: this.versionAfterWrite(after, target) }
+    })
+  }
+
   override async editText(
     target: FsTarget,
     edit: FsEditRequest,
     expected?: { version: FsVersion },
     signal?: AbortSignal,
-  ): Promise<FsEditOutcome> {
-    return this.withLock(target.targetKey, async () => {
-      const existing = await probe(target.targetKey)
-      // Stale guard before literal matching: an edit based on an old read reports
-      // FS_STALE_VERSION, not FS_EDIT_NOT_FOUND/FS_AMBIGUOUS_EDIT against newer content.
-      // Missing targets use the same stale code on guarded and unconditional edit paths.
-      if (!existing) throw new FsError(`cannot edit "${target.displayPath}": file changed since it was read`, 'FS_STALE_VERSION')
-      if (existing.type !== 'file') throw new FsError(`cannot edit "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
-      // expected === undefined: unconditional edit of the current content — no
-      // version guard. Still inside the per-target lock, so the read→match→write
-      // window is serialized and atomic.
-      if (expected && existing.version !== expected.version) {
-        throw new FsError(`cannot edit "${target.displayPath}": file changed since it was read`, 'FS_STALE_VERSION')
-      }
+  ): Promise<FsEditOutcome> {    return this.withLock(target.targetKey, async () => {
+    const existing = await probe(target.targetKey)
+    // Stale guard before literal matching: an edit based on an old read reports
+    // FS_STALE_VERSION, not FS_EDIT_NOT_FOUND/FS_AMBIGUOUS_EDIT against newer content.
+    // Missing targets use the same stale code on guarded and unconditional edit paths.
+    if (!existing) throw new FsError(`cannot edit "${target.displayPath}": file changed since it was read`, 'FS_STALE_VERSION')
+    if (existing.type !== 'file') throw new FsError(`cannot edit "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
+    // expected === undefined: unconditional edit of the current content — no
+    // version guard. Still inside the per-target lock, so the read→match→write
+    // window is serialized and atomic.
+    if (expected && existing.version !== expected.version) {
+      throw new FsError(`cannot edit "${target.displayPath}": file changed since it was read`, 'FS_STALE_VERSION')
+    }
 
-      const original = await readForEdit(target.targetKey, target.displayPath, signal)
-      const edited = applyLiteralEdit(original.content, edit.oldString, edit.newString, edit.replaceAll, target.displayPath)
-      const content = restoreLineEndings(edited.content, original.lineEndings)
-      await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals)
+    const original = await readForEdit(target.targetKey, target.displayPath, signal)
+    const edited = applyLiteralEdit(original.content, edit.oldString, edit.newString, edit.replaceAll, target.displayPath)
+    const content = restoreLineEndings(edited.content, original.lineEndings)
+    await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals)
 
-      const after = await probe(target.targetKey)
-      return {
-        version: this.versionAfterWrite(after, target),
-        // The LF-normalized before/after text (the applied-hunk diff basis);
-        // line-ending restoration is a storage detail the diff ignores.
-        before: original.content,
-        after: edited.content,
-      }
-    })
+    const after = await probe(target.targetKey)
+    return {
+      version: this.versionAfterWrite(after, target),
+      // The LF-normalized before/after text (the applied-hunk diff basis);
+      // line-ending restoration is a storage detail the diff ignores.
+      before: original.content,
+      after: edited.content,
+    }
+  })
   }
 
   override async mkdir(target: FsTarget, signal?: AbortSignal): Promise<FsMkdirOutcome> {
