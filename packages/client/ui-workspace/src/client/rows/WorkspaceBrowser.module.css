@@ -319,19 +319,34 @@
    control, so it carries the group's indent and reads as its child rather than
    as a region section.
 
-   The indent is PADDING and the box spans the row: with a margin-based indent the
-   button's own box stopped short of the row, so its hover and its click covered
-   less than the Files heading's row does. Both headings now highlight and answer
-   a click across the same width, and both chevrons land on one left edge. */
+   The indent is PADDING and the box spans the row, so a heading's hover and its
+   click cover the same width, and both chevrons land on one left edge. A heading
+   with actions beside it keeps them on this row. */
 .groupLevel {
   display: flex;
   align-items: center;
-  gap: 2px;
   box-sizing: border-box;
   width: 100%;
-  padding: 2px 4px 2px calc(var(--dsh-workspace-indent, 0px) + 16px);
-  border: none;
+  padding: 2px 4px 2px 0;
   border-radius: var(--dsw-radius-sm);
+  transition: background-color 120ms var(--ds-ease-in-out);
+}
+
+.groupLevel:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.groupLevelToggle {
+  display: flex;
+  align-items: center;
+  /* Absorbs the row's free space, so the fold answers a click anywhere across the
+     row the hover highlights — not only on the label and its chevron. */
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 2px 0 calc(var(--dsh-workspace-indent, 0px) + 16px);
+  border: none;
   background: transparent;
   /* The region's own heading ink and inherited size, so a Workspace's two level
      labels read as the same kind of label. */
@@ -340,11 +355,35 @@
   line-height: 20px;
   text-align: left;
   cursor: pointer;
-  transition: background-color 120ms var(--ds-ease-in-out);
 }
 
-.groupLevel:hover {
+.groupLevelActions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 2px;
+}
+
+.groupLevelAction {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  transition: background-color 120ms var(--ds-ease-in-out), color 120ms var(--ds-ease-in-out);
+}
+
+.groupLevelAction:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
 }
 
 /* The tree brings its own heading, so this only indents the section to the same

@@ -1280,9 +1280,29 @@ describe('WorkspaceBrowser', () => {
       expect(b.store.getSnapshot().groupExpansion).toEqual({ alpha: true })
     })
     expect(screen.queryByText('alpha-s')).toBeNull()
+    // The action lives on the Sessions heading, which a folded Workspace does not
+    // draw, so the Workspace is opened first; the handler still expands it itself.
+    fireEvent.click(screen.getByText('alpha'))
     fireEvent.click(screen.getByRole('button', { name: '在“alpha”中新建会话' }))
     expect(b.store.getSnapshot().groupExpansion).toEqual({ alpha: true })
     expect(screen.getByText('alpha-s')).toBeTruthy()
+    expect(startSession).toHaveBeenCalledWith(wid('alpha'))
+  })
+
+  it('carries the create action on the Sessions heading, not on the Workspace row', () => {
+    const startSession = vi.fn()
+    mount({
+      useSessions: hook(sessionState([summary('alpha-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
+      startSession,
+    })
+    fireEvent.click(screen.getByText('alpha'))
+
+    const create = screen.getByRole('button', { name: '在“alpha”中新建会话' })
+    // Beside the level's own label, outside the Workspace's treeitem row.
+    expect(create.closest('[role="treeitem"]')).toBeNull()
+    expect(create.parentElement?.parentElement?.textContent).toContain('会话')
+    fireEvent.click(create)
     expect(startSession).toHaveBeenCalledWith(wid('alpha'))
   })
 

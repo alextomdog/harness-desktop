@@ -20,6 +20,7 @@ import {
   Button, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconArchiveOutlineRegular,
   IconChevronDownOutlineRegular, IconChevronRightOutlineRegular,
   IconChevronsUpDownOutlineRegular, IconClockOutlineRegular, IconCloseFillRegular,
+  IconNewChatOutlineRegular,
   IconFlatListOutlineRegular, IconFolderCloseRegular, IconProjectAddOutlineRegular,
   IconQueueOutlineRegular, IconSearchOutlineRegular, IconSlidersTwoOutlineRegular,
   IconWorkspaceTreeOutlineRegular, Menu, Modal, Toast, Tooltip,
@@ -428,6 +429,9 @@ function SessionTree({
   const rowKeys: string[] = groups.length === 0 ? ['empty'] : []
   const renderGroup = (group: GroupNode, depth: number): ReactNode => {
     const workspaceId = group.workspaceId
+    const newSessionShortcut = shortcuts.find(row => row.id === 'session.new')
+    // The heading's own label: the ungrouped bucket has no Workspace title.
+    const headingLabel = group.workspaceId === undefined ? t('group.ungrouped') : group.label
     const children = childrenByParent.get(group.key) ?? []
     const compatibleDrag = workspaceDrag !== null && parents.get(workspaceDrag.workspaceId) === parents.get(group.key)
     const collapsed = collapsedSessionRows(group.sessions)
@@ -518,7 +522,6 @@ function SessionTree({
           }}
       >
         <ProjectRowItem
-          newShortcut={shortcuts.find(row => row.id === 'session.new')}
           group={group}
           containsCurrentDescendant={currentAncestors.has(group.key)}
           home={home}
@@ -528,12 +531,6 @@ function SessionTree({
               setSessionLimits(limits => ({ ...limits, [group.key]: COLLAPSED_SESSION_LIMIT }))
             }
             setGroupExpanded(group.key, !group.expanded)
-          }}
-          onCreate={() => {
-            if (group.workspaceId !== undefined) {
-              setGroupExpanded(group.key, true)
-              startSession(group.workspaceId)
-            }
           }}
           drag={workspaceDragProps}
           actions={group.workspaceId === undefined
@@ -555,17 +552,41 @@ function SessionTree({
           </div>
         )}
         {group.expanded && (
-          <button
-            type="button"
-            className={css.groupLevel}
-            aria-expanded={sessionsOpen}
-            onClick={() => { toggleLevel(`${group.key}:sessions`) }}
-          >
-            {sessionsOpen
-              ? <IconChevronDownOutlineRegular size={12} />
-              : <IconChevronRightOutlineRegular size={12} />}
-            <span>{t('section.sessions')}</span>
-          </button>
+          <div className={css.groupLevel}>
+            <button
+              type="button"
+              className={css.groupLevelToggle}
+              aria-expanded={sessionsOpen}
+              onClick={() => { toggleLevel(`${group.key}:sessions`) }}
+            >
+              {sessionsOpen
+                ? <IconChevronDownOutlineRegular size={12} />
+                : <IconChevronRightOutlineRegular size={12} />}
+              <span>{t('section.sessions')}</span>
+            </button>
+            {/* This level's own create action, moved here from the Workspace row
+                above with its tooltip, shortcut and handler unchanged. The
+                ungrouped bucket has no Workspace to start in, so its button stays
+                inert exactly as it was. */}
+            <span className={css.groupLevelActions}>
+              <Tooltip label={t('actions.newSession')} shortcutKeys={newSessionShortcut?.keys} side="bottom" align="end" delayMs={500}>
+                <button
+                  type="button"
+                  className={css.groupLevelAction}
+                  aria-keyshortcuts={newSessionShortcut?.aria}
+                  aria-label={t('actions.newSession.aria', { name: headingLabel })}
+                  onClick={() => {
+                    if (group.workspaceId !== undefined) {
+                      setGroupExpanded(group.key, true)
+                      startSession(group.workspaceId)
+                    }
+                  }}
+                >
+                  <IconNewChatOutlineRegular size={14} />
+                </button>
+              </Tooltip>
+            </span>
+          </div>
         )}
         {sessions.map((node) => {
         // Session drag never leaves its browser-local account, and pinned

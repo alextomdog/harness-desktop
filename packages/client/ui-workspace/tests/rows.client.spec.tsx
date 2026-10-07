@@ -141,22 +141,18 @@ describe('workspace browser rows', () => {
     expect(screen.getByText(label)).toBeTruthy()
   })
 
-  it('renders an active Workspace and keeps its create action separate from toggling', () => {
+  it('renders an active Workspace whose create action lives on its Sessions heading', () => {
     const onToggle = vi.fn()
-    const onCreate = vi.fn()
     const group: GroupNode = {
       key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
       sessionCount: 1, expanded: true, containsCurrent: true, sessions: [],
     }
-    render(<ProjectRowItem group={group} onToggle={onToggle} onCreate={onCreate} t={t}
-      newShortcut={{ id: 'session.new' as never, label: 'New', aliases: [], binding: null,
-        keys: ['Ctrl', 'N'], aria: 'Control+N', modified: true, conflicts: [], issue: null }} />)
+    render(<ProjectRowItem group={group} onToggle={onToggle} t={t} />)
 
     expect(screen.getByRole('treeitem').getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByRole('button', { name: '在“Project”中新建会话' }).getAttribute('aria-keyshortcuts')).toBe('Control+N')
-    fireEvent.click(screen.getByRole('button', { name: '在“Project”中新建会话' }))
-    expect(onCreate).toHaveBeenCalledOnce()
-    expect(onToggle).not.toHaveBeenCalled()
+    // The create action moved onto the Workspace's Sessions heading, so this row
+    // keeps only its own menu and its toggle.
+    expect(screen.queryByRole('button', { name: '在“Project”中新建会话' })).toBeNull()
     fireEvent.click(screen.getByText('Project'))
     expect(onToggle).toHaveBeenCalledOnce()
   })
@@ -436,7 +432,7 @@ describe('workspace browser rows', () => {
       sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
     }
     render(<ProjectRowItem
-      group={group} onToggle={onToggle} onCreate={vi.fn()}
+      group={group} onToggle={onToggle}
       actions={{ rename: onRename, delete: onDelete }} t={t}
     />)
     fireEvent.click(screen.getByRole('button', { name: '工作区“Project”的操作' }))
@@ -466,7 +462,7 @@ describe('workspace browser rows', () => {
         key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
         sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
       }
-      render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+      render(<ProjectRowItem group={group} onToggle={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(800) })
       // Card body: full title + cwd + absolute creation time.
@@ -482,63 +478,6 @@ describe('workspace browser rows', () => {
     }
   })
 
-  it.each(['hover', 'focus'] as const)('shows only the new Session tooltip while its action owns %s', (trigger) => {
-    vi.useFakeTimers()
-    try {
-      const group: GroupNode = {
-        key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
-        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
-      }
-      render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
-      const row = screen.getByRole('treeitem')
-      const create = screen.getByRole('button', { name: '在“Project”中新建会话' })
-      fireEvent.pointerEnter(row.parentElement as HTMLElement)
-      act(() => { vi.advanceTimersByTime(800) })
-      expect(screen.getByText('/projects/project')).toBeTruthy()
-
-      if (trigger === 'hover') {
-        fireEvent.mouseEnter(create)
-        act(() => { vi.advanceTimersByTime(500) })
-      } else {
-        fireEvent.keyDown(document, { key: 'Tab' })
-        fireEvent.focus(create)
-      }
-      expect(screen.getByRole('tooltip').textContent).toBe('新会话')
-      expect(screen.queryByText('/projects/project')).toBeNull()
-
-      if (trigger === 'hover') fireEvent.mouseLeave(create, { relatedTarget: row })
-      else fireEvent.blur(create, { relatedTarget: row })
-      expect(screen.queryByRole('tooltip')).toBeNull()
-      expect(screen.getByText('/projects/project')).toBeTruthy()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('keeps workspace details hidden when the pointer first enters its new Session action', () => {
-    vi.useFakeTimers()
-    try {
-      const group: GroupNode = {
-        key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
-        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
-      }
-      render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
-      const row = screen.getByRole('treeitem')
-      const create = screen.getByRole('button', { name: '在“Project”中新建会话' })
-      fireEvent.pointerEnter(row.parentElement as HTMLElement)
-      fireEvent.mouseEnter(create)
-      act(() => { vi.advanceTimersByTime(1000) })
-      expect(screen.getByRole('tooltip').textContent).toBe('新会话')
-      expect(screen.queryByText('/projects/project')).toBeNull()
-
-      fireEvent.mouseLeave(create, { relatedTarget: row })
-      expect(screen.queryByRole('tooltip')).toBeNull()
-      expect(screen.getByText('/projects/project')).toBeTruthy()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
   it('workspace hover card shows a POSIX home descendant as ~ and still copies the full path', async () => {
     vi.useFakeTimers()
     const writeText = vi.fn(async () => {})
@@ -548,7 +487,7 @@ describe('workspace browser rows', () => {
         key: 'project', workspaceId: wid('project'), cwd: '/home/u/Documents/project', createdAt: 0, label: 'Project',
         sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
       }
-      render(<ProjectRowItem group={group} home="/home/u" onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+      render(<ProjectRowItem group={group} home="/home/u" onToggle={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(800) })
       expect(screen.getByText('~/Documents/project')).toBeTruthy()
@@ -568,7 +507,7 @@ describe('workspace browser rows', () => {
         key: 'project', workspaceId: wid('project'), cwd: undefined, createdAt: 0, label: 'Project',
         sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
       }
-      render(<ProjectRowItem group={group} home="/home/u" onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+      render(<ProjectRowItem group={group} home="/home/u" onToggle={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(800) })
       expect(screen.getAllByText('Project')).toHaveLength(2)
@@ -586,7 +525,7 @@ describe('workspace browser rows', () => {
         key: 'project', workspaceId: wid('project'), cwd: 'C:\\Users\\u\\project', createdAt: 0, label: 'Project',
         sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
       }
-      render(<ProjectRowItem group={group} home="C:\\Users\\u" onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+      render(<ProjectRowItem group={group} home="C:\\Users\\u" onToggle={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(800) })
       expect(screen.getByText('C:\\Users\\u\\project')).toBeTruthy()
@@ -600,7 +539,7 @@ describe('workspace browser rows', () => {
       key: '', workspaceId: undefined, cwd: undefined, createdAt: undefined, label: 'Ungrouped',
       sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
     }
-    render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+    render(<ProjectRowItem group={group} onToggle={vi.fn()} t={t} />)
     expect(screen.queryByRole('button', { name: /工作区/ })).toBeNull()
   })
 
