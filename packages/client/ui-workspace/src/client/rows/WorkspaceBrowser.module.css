@@ -317,15 +317,19 @@
 
 /* One Workspace's two levels. Each heading is that Workspace's own disclosure
    control, so it carries the group's indent and reads as its child rather than
-   as a region section; the files body inherits the same indent for its rows. */
+   as a region section.
+
+   The indent is PADDING and the box spans the row: with a margin-based indent the
+   button's own box stopped short of the row, so its hover and its click covered
+   less than the Files heading's row does. Both headings now highlight and answer
+   a click across the same width, and both chevrons land on one left edge. */
 .groupLevel {
   display: flex;
   align-items: center;
   gap: 2px;
   box-sizing: border-box;
-  max-width: 100%;
-  margin-left: calc(var(--dsh-workspace-indent, 0px) + 14px);
-  padding: 2px 4px 2px 2px;
+  width: 100%;
+  padding: 2px 4px 2px calc(var(--dsh-workspace-indent, 0px) + 16px);
   border: none;
   border-radius: var(--dsw-radius-sm);
   background: transparent;
