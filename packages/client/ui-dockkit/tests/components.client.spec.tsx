@@ -1595,7 +1595,7 @@ describe('surface chrome', () => {
   // Layout itself is the stylesheet's; what the DOM promises is that every
   // chip and drop caret sits inside the strip's one shrinking box, and that the
   // controls after it are the strip's own children, in this order.
-  it('keeps the chips in their own box ahead of the add, split, and chrome controls', () => {
+  it('keeps the chips in their own box behind the add control and ahead of the split and chrome controls', () => {
     const controller = seededController()
     controller.openContent({ contentId: 'dsh-resource://file/session/s/a.txt', title: 'a.txt', kind: 'file' })
     const snapshot = controller.getSnapshot()
@@ -1617,7 +1617,7 @@ describe('surface chrome', () => {
       if (child.hasAttribute('data-dockkit-strip-chrome')) return 'chrome'
       return 'fill'
     }
-    expect([...(strip?.children ?? [])].map(role)).toEqual(['tabs', 'add', 'fill', 'split', 'chrome'])
+    expect([...(strip?.children ?? [])].map(role)).toEqual(['add', 'tabs', 'fill', 'split', 'chrome'])
     expect(strip?.querySelectorAll('[data-dockkit-strip-tabs] [data-dockkit-tab]')).toHaveLength(2)
     expect(strip?.querySelectorAll(':scope > [data-dockkit-tab]')).toHaveLength(0)
   })
