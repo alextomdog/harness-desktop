@@ -456,12 +456,20 @@ class JsonlSessionPersistence extends SessionPersistence {
     const header = await this.readGenerationHeader(selected, id, signal)
     if (header === undefined) return false
     const dir = sessionDir(this.root, header.cwd, id)
+    const project = projectDir(this.root, header.cwd)
     const lease = await SessionWriteLease.acquire(dir, id)
     try {
       signal?.throwIfAborted()
       await rm(dir, { recursive: true, force: true })
       this.coldLogMemo.delete(id)
-      await this.syncDirPosix(projectDir(this.root, header.cwd))
+      // Making the removal crash-durable is platform-specific, like every other
+      // namespace change here: POSIX fsyncs the parent directory, Windows has no
+      // permission to fsync a directory and flushes it with a write-through
+      // handle instead. Calling the POSIX helper on Windows raises EPERM.
+      /* v8 ignore start -- Windows uses write-through namespace operations; POSIX coverage exercises directory fsync. */
+      if (process.platform === 'win32') await ensureDurableDirectoryWin32(project)
+      else await this.syncDirPosix(project)
+      /* v8 ignore stop */
     } finally {
       await lease.release()
     }

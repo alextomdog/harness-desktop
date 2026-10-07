@@ -7,6 +7,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { scheduler } from 'node:timers/promises'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
+import { SessionAlreadyOwnedError } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import {
@@ -1367,6 +1368,52 @@ describe('JsonlSessionPersistence: durability and crash semantics', () => {
     expect((await stat(rawLogPath(root, '/work', m.id))).isFile()).toBe(true)
     expect((await ctx.sessionPersistence.list()).map(s => s.header.id)).toContain(m.id)
     await handle.close()
+  })
+
+  it('delete removes the session directory, and a second delete is nothing to remove', async () => {
+    const m = meta('removable', '/work')
+    const handle = await ctx.sessionPersistence.create(m)
+    await handle.append(oneTurnLog())
+    await handle.close()
+    const dir = sessionDir(root, '/work', m.id)
+    expect((await stat(dir)).isDirectory()).toBe(true)
+
+    expect(await ctx.sessionPersistence.delete(m.id)).toBe(true)
+    // The artifact AND its directory: the whole session leaves the disk.
+    await expect(stat(dir)).rejects.toThrow()
+    expect(await ctx.sessionPersistence.stat(m.id)).toBeUndefined()
+    expect((await ctx.sessionPersistence.list()).map(s => s.header.id)).not.toContain(m.id)
+    // A second removal is a no-op, not an error, so a retry after a lost race
+    // resolves instead of failing.
+    expect(await ctx.sessionPersistence.delete(m.id)).toBe(false)
+  })
+
+  it('delete refuses a session a handle is still writing, and its tail survives', async () => {
+    const m = meta('writing', '/work')
+    const handle = await ctx.sessionPersistence.create(m)
+    await handle.append(oneTurnLog())
+    const dir = sessionDir(root, '/work', m.id)
+
+    await expect(ctx.sessionPersistence.delete(m.id))
+      .rejects.toBeInstanceOf(SessionAlreadyOwnedError)
+    // The refusal is the point: a live writer keeps its directory and its log.
+    expect((await stat(dir)).isDirectory()).toBe(true)
+    expect((await stat(rawLogPath(root, '/work', m.id))).isFile()).toBe(true)
+
+    // Closing releases the lease, and the same call then succeeds.
+    await handle.close()
+    expect(await ctx.sessionPersistence.delete(m.id)).toBe(true)
+    await expect(stat(dir)).rejects.toThrow()
+  })
+
+  it('delete refuses a created session that never materialized, then finds nothing to remove', async () => {
+    const m = meta('unmaterialized', '/work')
+    const handle = await ctx.sessionPersistence.create(m)
+    // No directory exists yet, so there is nothing an outside remover could
+    // take; the open created session is refused rather than reported absent.
+    await expect(ctx.sessionPersistence.delete(m.id)).rejects.toThrow(/open in this process/u)
+    await handle.close()
+    expect(await ctx.sessionPersistence.delete(m.id)).toBe(false)
   })
 
   it('flush materializes an explicitly durable empty session without an event row', async () => {
