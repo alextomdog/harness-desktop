@@ -85,6 +85,58 @@ export function createReadPage(remote: WorkspaceFilesReadRemote): ReadWorkspaceF
 export type DocumentFileBytes = WorkspaceFileBytes<Uint8Array<ArrayBuffer>>
 
 /**
+ * What one save attempt did, as the editor needs it: a stale basis is a DECISION
+ * for the reader, not a failure to retry silently.
+ */
+export type WriteWorkspaceFileOutcome = 'saved' | 'stale' | 'failed'
+
+/**
+ * The slice of the Client Remote a save calls. Kept beside the read face so both
+ * halves of one file's traffic live in one place.
+ */
+export interface WorkspaceFilesWriteRemote {
+  readonly workspaceFiles: {
+    /**
+     * Replace one file's whole content.
+     * @param sessionId - the session whose workspace resolves `path`.
+     * @param path - workspace path, absolute or relative to the workspace root.
+     * @param content - the complete new content.
+     * @param expectedVersion - the version the tab read; the Host refuses a file written since.
+     * @param signal - cancels the call.
+     * @returns the file at its new version, or the failure the Host declares.
+     */
+    write(
+      sessionId: SessionId,
+      path: string,
+      content: string,
+      expectedVersion: string | undefined,
+      signal?: AbortSignal,
+    ): Promise<RemoteResult<{ readonly version: string }>>
+  }
+}
+
+/**
+ * Bind one file's save to a Remote face.
+ *
+ * The stale refusal is reported as its own outcome rather than folded into a
+ * failure: the editor keeps the reader's text and asks which side wins, instead
+ * of losing either version.
+ * @param remote - the Client Remote carrying the `workspaceFiles` namespace.
+ * @param file - Session and path decoded from the tab address.
+ * @returns the save the editor performs.
+ */
+export function createWriteFile(
+  remote: WorkspaceFilesWriteRemote,
+  file: SessionFile,
+): (content: string, expectedVersion: string, signal: AbortSignal) => Promise<WriteWorkspaceFileOutcome> {
+  return async (content, expectedVersion, signal) => {
+    const result = await remote.workspaceFiles.write(file.sessionId, file.path, content, expectedVersion, signal)
+    if (result.ok) return 'saved'
+    return result.error.code === 'workspace-file/stale-version' ? 'stale' : 'failed'
+  }
+}
+
+/**
  * Read a complete file through the Host endpoint.
  * @param file - Session and path decoded from the tab address.
  * @param signal - owning tab lifetime.
