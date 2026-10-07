@@ -73,6 +73,17 @@ describe('installDesktopBrowserControl', () => {
     await failure
   })
 
+  it('reads the event log the shell captured, resuming where the caller stopped', async () => {
+    const control = installDesktopBrowserControl()
+    const sent = capture()
+    const events = control.events('l1', 7)
+    const request = sent[0]!
+    expect(request).toMatchObject({ lease: 'l1', eventsSince: 7 })
+    expect(request.method).toBeUndefined()
+    answer(control, request, { events: [{ seq: 8, method: 'Log.entryAdded', params: { entry: { text: 'hi' } } }] })
+    await expect(events).resolves.toEqual([{ seq: 8, method: 'Log.entryAdded', params: { entry: { text: 'hi' } } }])
+  })
+
   it('claims its own replies and leaves other messages alone', () => {
     const control = installDesktopBrowserControl()
     capture()

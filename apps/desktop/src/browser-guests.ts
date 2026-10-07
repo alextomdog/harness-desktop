@@ -12,10 +12,30 @@ interface GuestLease {
   releaseInput?: () => void
 }
 
+/** One captured DevTools event, ordered so a reader can ask for what is new. */
+export interface DesktopBrowserEvent {
+  /** Monotonic across the page's lifetime; a reader resumes after the last one it saw. */
+  readonly seq: number
+  /** The protocol method, such as `Network.requestWillBeSent`. */
+  readonly method: string
+  readonly params: unknown
+}
+
+/**
+ * How many events one page keeps. Enough for a listing to be useful, bounded so a
+ * chatty page cannot grow the shell's memory without end.
+ */
+const MAX_CAPTURED_EVENTS = 1_000
+
+/** The domains whose events the tools read; enabling them is what starts capture. */
+const CAPTURED_DOMAINS = ['Runtime.enable', 'Log.enable', 'Network.enable'] as const
+
 /** Owns workspace storage partitions independently from individual tab guests. */
 export class DesktopBrowserGuests {
   private readonly partitions = new Map<string, string>()
   private readonly leases = new Map<DesktopBrowserLeaseId, GuestLease>()
+  /** Captured events per guest, oldest first, and the sequence the next one takes. */
+  private readonly captured = new Map<WebContents, { events: DesktopBrowserEvent[]; next: number }>()
 
   /** @param hostUrl - current authenticated DSH Host, which guests cannot request. */
   constructor(private readonly hostUrl: () => string | undefined) {}
@@ -167,12 +187,54 @@ export class DesktopBrowserGuests {
    * @throws when no live guest holds that lease.
    */
   async command(leaseId: string, method: string, params?: Record<string, unknown>): Promise<unknown> {
+    const guest = this.guestOf(leaseId)
+    await this.attach(guest)
+    return await guest.debugger.sendCommand(method, params)
+  }
+
+  /**
+   * The events captured for one page after a point.
+   * @param leaseId - the lease received from the Host.
+   * @param since - the last sequence the caller already saw, or absent for everything held.
+   * @returns the new events, oldest first.
+   */
+  events(leaseId: string, since?: number): readonly DesktopBrowserEvent[] {
+    const guest = this.guestOf(leaseId)
+    const held = this.captured.get(guest)
+    if (held === undefined) return []
+    return since === undefined ? held.events : held.events.filter(event => event.seq > since)
+  }
+
+  /** The live guest a lease names, or a refusal. */
+  private guestOf(leaseId: string): WebContents {
     const guest = this.leases.get(leaseId as DesktopBrowserLeaseId)?.guest
     if (guest === undefined || guest.isDestroyed()) {
       throw new Error('desktop browser: no live guest holds that lease')
     }
-    if (!guest.debugger.isAttached()) guest.debugger.attach('1.3')
-    return await guest.debugger.sendCommand(method, params)
+    return guest
+  }
+
+  /**
+   * Attach the debugger once per guest, and start capturing the domains the tools
+   * read. Enabling a domain is what makes the protocol emit its events at all, so
+   * a page nobody has commanded yet still reports its console and its traffic.
+   * @param guest - the guest to attach.
+   */
+  private async attach(guest: WebContents): Promise<void> {
+    if (!guest.debugger.isAttached()) {
+      guest.debugger.attach('1.3')
+      const held = { events: [] as DesktopBrowserEvent[], next: 1 }
+      this.captured.set(guest, held)
+      guest.debugger.on('message', (_event, method, params) => {
+        held.events.push({ seq: held.next++, method, params })
+        if (held.events.length > MAX_CAPTURED_EVENTS) held.events.splice(0, held.events.length - MAX_CAPTURED_EVENTS)
+      })
+      guest.once('destroyed', () => { this.captured.delete(guest) })
+      for (const domain of CAPTURED_DOMAINS) {
+        // A domain the page refuses is not fatal: the tools that read it say so.
+        await guest.debugger.sendCommand(domain).catch(() => undefined)
+      }
+    }
   }
 
   private configureSession(browserSession: Session): void {

@@ -19,12 +19,28 @@ export interface DesktopBrowserPage {
   readonly title: string
 }
 
+/** One captured protocol event, as the shell holds it. */
+export interface DesktopBrowserEvent {
+  /** Monotonic across the page's lifetime. */
+  readonly seq: number
+  /** The protocol method, such as `Network.requestWillBeSent`. */
+  readonly method: string
+  readonly params: unknown
+}
+
 /** What the Host asks of the shell. */
 export interface DesktopBrowserControl {
   /** The live pages, oldest first. */
   list(): Promise<readonly DesktopBrowserPage[]>
   /** Run one DevTools Protocol command against one page. */
   command(lease: string, method: string, params?: Record<string, unknown>): Promise<unknown>
+  /**
+   * The events one page captured after a point.
+   * @param lease - the page.
+   * @param since - the last sequence already seen, or absent for everything held.
+   * @returns the new events, oldest first.
+   */
+  events(lease: string, since?: number): Promise<readonly DesktopBrowserEvent[]>
   /**
    * Route one message from the shell.
    * @param message - the message, as received.
@@ -80,6 +96,12 @@ export function installDesktopBrowserControl(deadlineMs = BROWSER_COMMAND_DEADLI
       const reply = await ask({ lease, method, ...params === undefined ? {} : { params } })
       if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
       return reply.result
+    },
+    async events(lease, since): Promise<readonly DesktopBrowserEvent[]> {
+      const reply = await ask({ lease, ...since === undefined ? {} : { eventsSince: since } })
+      if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
+      const events = reply.events
+      return Array.isArray(events) ? events as readonly DesktopBrowserEvent[] : []
     },
     handle(message: unknown): boolean {
       if (typeof message !== 'object' || message === null) return false

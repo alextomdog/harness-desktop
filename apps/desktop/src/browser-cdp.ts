@@ -18,6 +18,8 @@ export interface DesktopBrowserCommandRequest {
   /** A DevTools Protocol method name; absent with an absent lease means "list". */
   readonly method?: string
   readonly params?: Record<string, unknown>
+  /** Event-log read: the last sequence the Host already saw. */
+  readonly eventsSince?: number
 }
 
 /** Whether a message from the Host is a browser-bridge request. */
@@ -30,8 +32,11 @@ export function isDesktopBrowserCommandRequest(message: unknown): message is Des
   if (candidate.method !== undefined && typeof candidate.method !== 'string') return false
   if (candidate.params !== undefined
     && (typeof candidate.params !== 'object' || candidate.params === null || Array.isArray(candidate.params))) return false
-  // A command needs both halves; a listing carries neither.
-  return candidate.lease === undefined || candidate.method !== undefined
+  if (candidate.eventsSince !== undefined && !Number.isSafeInteger(candidate.eventsSince)) return false
+  // A command needs both halves, a listing carries neither, and an event read
+  // carries the lease plus the sequence it resumes after.
+  if (candidate.lease === undefined) return candidate.method === undefined && candidate.eventsSince === undefined
+  return candidate.method !== undefined || candidate.eventsSince !== undefined
 }
 
 /**
@@ -54,6 +59,11 @@ export async function answerBrowserCommand(
   try {
     if (request.lease === undefined) {
       reply({ pages: guests.list() })
+      return
+    }
+    if (request.method === undefined) {
+      // The event log the debugger captured, resumed after what the Host saw.
+      reply({ events: guests.events(request.lease, request.eventsSince) })
       return
     }
     const result = await guests.command(request.lease, request.method ?? '', request.params)

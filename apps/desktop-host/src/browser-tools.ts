@@ -14,7 +14,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { DesktopBrowserControl, DesktopBrowserPage } from './browser-cdp.ts'
+import type { DesktopBrowserControl, DesktopBrowserEvent, DesktopBrowserPage } from './browser-cdp.ts'
 
 /** The page list, and the page one call addresses. */
 interface Target {
@@ -244,4 +244,164 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       return { value: typeof value === 'string' ? value : JSON.stringify(value ?? evaluation.result?.description ?? null) }
     },
   }))
+
+  ctx.tools.register(defineTool({
+    name: 'list_console_messages',
+    description: 'Inspect console messages and uncaught page errors captured for a page of the built-in browser.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to read, as select_page lists it. Defaults to the only page.' },
+      pageSize: { type: 'number', description: 'Maximum messages to return, newest last. Defaults to 20.' },
+      types: {
+        type: 'array', items: { type: 'string' },
+        description: 'Console levels to include, such as error, warn, info, log. Omit for every level.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          messages: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                msgid: { type: 'number', required: true },
+                type: { type: 'string', required: true },
+                text: { type: 'string', required: true },
+              },
+            },
+          },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.messages.length === 0
+          ? 'No console messages captured.'
+          : value.messages.map(message => `[${message.type}] ${message.text}`).join('\n'),
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to read')
+      const wanted = args.types === undefined || args.types.length === 0 ? undefined : new Set(args.types)
+      const messages = consoleMessagesOf(await control.events(page.lease))
+        .filter(message => wanted === undefined || wanted.has(message.type))
+      return { messages: messages.slice(-pageSizeOf(args.pageSize)) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'list_network_requests',
+    description: 'Inspect captured HTTP(S) traffic for a page of the built-in browser.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to read, as select_page lists it. Defaults to the only page.' },
+      pageSize: { type: 'number', description: 'Maximum requests to return, newest last. Defaults to 20.' },
+      urlFilter: { type: 'string', description: 'Return only requests whose URL contains this text.' },
+      methods: {
+        type: 'array', items: { type: 'string' },
+        description: 'HTTP methods to include, such as GET or POST. Omit for every method.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          requests: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                reqid: { type: 'number', required: true },
+                method: { type: 'string', required: true },
+                url: { type: 'string', required: true },
+                status: { type: 'string', required: true },
+              },
+            },
+          },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.requests.length === 0
+          ? 'No requests captured.'
+          : value.requests.map(request => `${request.method} ${request.url} → ${request.status}`).join('\n'),
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to read')
+      const wanted = args.methods === undefined || args.methods.length === 0
+        ? undefined
+        : new Set(args.methods.map(method => method.toUpperCase()))
+      const requests = networkRequestsOf(await control.events(page.lease)).filter(request =>
+        (args.urlFilter === undefined || request.url.includes(args.urlFilter))
+        && (wanted === undefined || wanted.has(request.method)))
+      return { requests: requests.slice(-pageSizeOf(args.pageSize)) }
+    },
+  }))
+}
+
+/** How many entries a listing returns when the caller names no size. */
+function pageSizeOf(pageSize: number | undefined): number {
+  return pageSize === undefined || pageSize <= 0 ? 20 : Math.min(pageSize, 200)
+}
+
+/** One console line, as the three protocol methods that carry them describe it. */
+function consoleMessagesOf(events: readonly DesktopBrowserEvent[]): { msgid: number; type: string; text: string }[] {
+  const messages: { msgid: number; type: string; text: string }[] = []
+  for (const event of events) {
+    const params = event.params as {
+      type?: string
+      args?: readonly { value?: unknown; description?: string }[]
+      entry?: { level?: string; text?: string }
+      exceptionDetails?: { exception?: { description?: string }; text?: string }
+    }
+    if (event.method === 'Runtime.consoleAPICalled') {
+      const text = (params.args ?? []).map(argument =>
+        typeof argument.value === 'string' ? argument.value : JSON.stringify(argument.value ?? argument.description ?? null)).join(' ')
+      messages.push({ msgid: event.seq, type: params.type ?? 'log', text })
+    } else if (event.method === 'Log.entryAdded') {
+      messages.push({ msgid: event.seq, type: params.entry?.level ?? 'log', text: params.entry?.text ?? '' })
+    } else if (event.method === 'Runtime.exceptionThrown') {
+      messages.push({
+        msgid: event.seq,
+        type: 'error',
+        text: params.exceptionDetails?.exception?.description ?? params.exceptionDetails?.text ?? 'uncaught exception',
+      })
+    }
+  }
+  return messages
+}
+
+/** One request, merged from the events that announce it and report its outcome. */
+function networkRequestsOf(
+  events: readonly DesktopBrowserEvent[],
+): { reqid: number; method: string; url: string; status: string }[] {
+  const byRequest = new Map<string, { reqid: number; method: string; url: string; status: string }>()
+  for (const event of events) {
+    const params = event.params as {
+      requestId?: string
+      request?: { method?: string; url?: string }
+      response?: { status?: number }
+      errorText?: string
+      type?: string
+    }
+    const id = params.requestId
+    if (id === undefined) continue
+    if (event.method === 'Network.requestWillBeSent') {
+      byRequest.set(id, {
+        reqid: event.seq,
+        method: params.request?.method ?? 'GET',
+        url: params.request?.url ?? '',
+        status: 'pending',
+      })
+    } else if (event.method === 'Network.responseReceived') {
+      const held = byRequest.get(id)
+      if (held !== undefined) held.status = String(params.response?.status ?? '')
+    } else if (event.method === 'Network.loadingFailed') {
+      const held = byRequest.get(id)
+      if (held !== undefined) held.status = `failed: ${params.errorText ?? 'unknown'}`
+    }
+  }
+  return [...byRequest.values()]
 }
