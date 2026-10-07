@@ -6,7 +6,7 @@
  * was already there.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { failureOf, openWorkspace, signal, type Harness } from './harness.ts'
 
@@ -160,5 +160,39 @@ describe('workspaceFiles.renameEntry', () => {
       harness.endpoint().renameEntry(harness.scope, join(outside, 'escape.md'), 'next.md', signal()),
     )
     expect(failure.code).toBe('workspace-file/outside-workspace')
+  })
+})
+
+describe('workspaceFiles.deleteEntry', () => {
+  it('deletes a file and reports what it was', async () => {
+    await writeFile(join(workspace, 'gone.md'), 'x', 'utf8')
+    expect(await harness.endpoint().deleteEntry(harness.scope, 'gone.md', signal())).toEqual({ kind: 'file' })
+    await expect(stat(join(workspace, 'gone.md'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('deletes a directory with its contents', async () => {
+    await mkdir(join(workspace, 'tree', 'inner'), { recursive: true })
+    await writeFile(join(workspace, 'tree', 'inner', 'a.md'), 'a', 'utf8')
+    expect(await harness.endpoint().deleteEntry(harness.scope, 'tree', signal())).toEqual({ kind: 'directory' })
+    await expect(stat(join(workspace, 'tree'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('refuses a link rather than removing what it points at', async () => {
+    await writeFile(join(workspace, 'real.md'), 'body', 'utf8')
+    await symlink(join(workspace, 'real.md'), join(workspace, 'link.md'))
+    const failure = await failureOf(harness.endpoint().deleteEntry(harness.scope, 'link.md', signal()))
+    expect(failure.code).toBe('workspace-file/not-regular-file')
+    expect(failure.details).toMatchObject({ path: 'link.md', kind: 'symlink' })
+    // The refusal is the point: the link's target is untouched.
+    expect(await readFile(join(workspace, 'real.md'), 'utf8')).toBe('body')
+  })
+
+  it('refuses a missing target and an entry outside the workspace', async () => {
+    const missing = await failureOf(harness.endpoint().deleteEntry(harness.scope, 'absent.md', signal()))
+    expect(missing.code).toBe('workspace-file/not-found')
+    const escaped = await failureOf(
+      harness.endpoint().deleteEntry(harness.scope, join(outside, 'escape.md'), signal()),
+    )
+    expect(escaped.code).toBe('workspace-file/outside-workspace')
   })
 })

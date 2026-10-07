@@ -305,6 +305,31 @@ describe('WorkspaceFileTree', () => {
     expect(writeText).toHaveBeenCalledWith('C:\\work\\proj\\src\\a.md')
   })
 
+  it('deletes a row only through its confirmation, then reloads the parent', async () => {
+    let removed = false
+    const deleteEntry = vi.fn(async () => { removed = true })
+    const listDirectory = vi.fn(async (): Promise<WorkspaceTreeListing> => ({
+      path: '',
+      truncated: false,
+      entries: removed ? [] : [{ name: 'doomed.md', type: 'file' }],
+    }))
+    mount({ deleteEntry, listDirectory })
+
+    fireEvent.contextMenu(await screen.findByText('doomed.md'))
+    fireEvent.click(screen.getByText('files.delete'))
+    // Choosing the item only asks: a delete is the one action that cannot be undone.
+    expect(deleteEntry).not.toHaveBeenCalled()
+    expect(screen.getByText('files.deleteConfirm:{"name":"doomed.md"}')).toBeTruthy()
+
+    // The dialog's own confirm is the last element carrying this label (its title
+    // carries it too).
+    fireEvent.click(screen.getAllByText('files.delete').at(-1) as HTMLElement)
+    await waitFor(() => {
+      expect(deleteEntry).toHaveBeenCalledWith(sessionId, 'doomed.md', expect.anything())
+    })
+    expect(await screen.findByText('files.empty')).toBeTruthy()
+  })
+
   it('offers the open item only when a composition supplies an opener', async () => {
     const listing: WorkspaceTreeListing = { path: '', truncated: false, entries: [{ name: 'a.md', type: 'file' }] }
     const listDirectory = listingSource({ '.': listing })

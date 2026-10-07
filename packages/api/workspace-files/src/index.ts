@@ -43,6 +43,7 @@ import type {
   WorkspaceDirectoryCreated,
   WorkspaceDirectoryEntry,
   WorkspaceDirectoryListing,
+  WorkspaceEntryDeleted,
   WorkspaceEntryRenamed,
   WorkspaceFileBytes,
   WorkspaceFileRange,
@@ -405,6 +406,49 @@ export class WorkspaceFiles extends TypertRemoteService {
       throw this.refusalOf(error, path) ?? error
     }
     return { absolutePath: this.ctx.fs.processPath(destination) }
+  }
+
+  /**
+   * Delete one entry inside the Session's workspace, taking a directory's
+   * contents with it. A symbolic link is refused: the filesystem names a
+   * resolved target by what it resolves to, so removing one would remove the
+   * entry it points at rather than the link.
+   * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+   * @param path - workspace path of the entry to delete, absolute or relative to the root.
+   * @param signal - caller cancellation.
+   * @returns what was removed.
+   */
+  @Remote
+  async deleteEntry(
+    workspaceFileScope: WorkspaceFileScope,
+    path: string,
+    signal: AbortSignal,
+  ): Promise<WorkspaceEntryDeleted> {
+    signal.throwIfAborted()
+    const { workspaceRoot, sessionId } = workspaceFileScope
+    const root = await this.ctx.fs.resolve(workspaceRoot, { signal })
+    const target = await this.confine(root, workspaceRoot, path, signal)
+    // No-follow: this is the only gate that can see a link for what it is,
+    // because a resolved target has already followed it.
+    const entry = await this.ctx.fs.lstat(path, { cwd: workspaceRoot }, signal)
+    if (entry?.type === 'symlink') {
+      throw new RemoteError(
+        'workspace-file/not-regular-file',
+        `"${path}" is a link; deleting it would remove what it points at`,
+        { path, kind: 'symlink' },
+      )
+    }
+    try {
+      const outcome = await this.ctx.fs.remove(
+        target,
+        { recursive: entry?.type === 'directory' },
+        signal,
+        { mode: 'workspace-write', workspaceRoot, sessionId },
+      )
+      return { kind: outcome.kind }
+    } catch (error: unknown) {
+      throw this.refusalOf(error, path) ?? error
+    }
   }
 
   /**

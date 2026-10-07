@@ -58,6 +58,15 @@ export interface WorkspaceEntryRenamed {
   readonly absolutePath: string
 }
 
+/** What a delete removed. */
+export interface WorkspaceEntryDeleted {
+  /**
+   * `directory` when a tree went with it, otherwise a single entry. Reported so
+   * a caller can say what it did without re-reading the parent.
+   */
+  readonly kind: 'file' | 'directory'
+}
+
 /**
  * The line window one `read` returns. Lines are 1-based and end at `\n`; a
  * final `\n` terminates the last line rather than starting an empty one.

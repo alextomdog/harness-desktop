@@ -18,10 +18,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  classifyFileType, FileTypeIcon,
+  Button, classifyFileType, FileTypeIcon,
   IconChevronDownOutlineRegular, IconChevronRightOutlineRegular,
   IconFolderCloseRegular, IconFolderOpenRegular, IconPlusOutlineRegular,
-  IconProjectAddOutlineRegular, IconRefreshOutlineRegular,
+  IconProjectAddOutlineRegular, IconRefreshOutlineRegular, Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -59,6 +59,11 @@ export interface WorkspaceFileTreeInjected {
    * composition without it offers no rename rather than a dead item.
    */
   renameEntry?: (sessionId: SessionId, path: string, name: string, signal: AbortSignal) => Promise<void>
+  /**
+   * Delete one entry, taking a folder's contents with it. Optional, like the
+   * rename: a composition without it offers no delete.
+   */
+  deleteEntry?: (sessionId: SessionId, path: string, signal: AbortSignal) => Promise<void>
   /**
    * Reveal one file in the resource surface that owns file tabs. Optional: a
    * composition without that surface still gets a usable tree — expansion,
@@ -188,7 +193,7 @@ function createParent(row: Row): string {
  * @param props - owner Session, locale, and the filesystem actions.
  */
 export function WorkspaceFileTree({
-  sessionId, workspaceRoot, t, listDirectory, createFile, createDirectory, renameEntry, openFile,
+  sessionId, workspaceRoot, t, listDirectory, createFile, createDirectory, renameEntry, deleteEntry, openFile,
 }: WorkspaceFileTreeProps) {
   const [directories, setDirectories] = useState<ReadonlyMap<string, DirectoryState>>(new Map())
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
@@ -196,6 +201,8 @@ export function WorkspaceFileTree({
   const [selected, setSelected] = useState<string | null>(null)
   /** This section's own fold: the Files level inside a Workspace. */
   const [open, setOpen] = useState(true)
+  /** The row a delete is about to remove, while its confirmation is up. */
+  const [confirmDelete, setConfirmDelete] = useState<Row | null>(null)
   /** The two dismissible surfaces, so an outside-press check can exempt them. */
   const menuRef = useRef<HTMLDivElement | null>(null)
   const promptRef = useRef<HTMLDivElement | null>(null)
@@ -353,6 +360,27 @@ export function WorkspaceFileTree({
   }, [createDirectory, createFile, draft, load, renameEntry, request, sessionId, t])
 
   // Only the very first read has nothing to draw; a reread keeps its rows.
+  /**
+   * Remove the row the confirmation names. A delete is the one action here that
+   * cannot be undone, so it only ever runs from that confirmation.
+   */
+  const runDelete = useCallback(async (): Promise<void> => {
+    if (confirmDelete === null || deleteEntry === undefined) return
+    const target = confirmDelete
+    setConfirmDelete(null)
+    setBusy(true)
+    try {
+      await deleteEntry(sessionId, target.path, lifetime.current.signal)
+      setSelected(null)
+      // The holding directory's cached listing now holds the removed name.
+      await load(parentOf(target.path), lifetime.current.signal)
+    } catch (error: unknown) {
+      setNotice(createFailure(error, t, target.name))
+    } finally {
+      setBusy(false)
+    }
+  }, [confirmDelete, deleteEntry, load, sessionId, t])
+
   if (rootState === undefined) {
     return <div className={css.state} role="status">{t('files.loading')}</div>
   }
@@ -633,8 +661,40 @@ export function WorkspaceFileTree({
           >
             {menu.row.type === 'directory' ? t('files.newFolderHere') : t('files.newFolder')}
           </button>
+          {deleteEntry !== undefined && (
+            <>
+              <div className={css.menuSeparator} role="separator" />
+              <button
+                type="button"
+                role="menuitem"
+                className={css.menuItem}
+                onClick={() => { setMenu(null); setConfirmDelete(menu.row) }}
+              >
+                {t('files.delete')}
+              </button>
+            </>
+          )}
         </div>
       )}
+
+      <Modal
+        open={confirmDelete !== null}
+        onClose={() => { setConfirmDelete(null) }}
+        closeLabel={t('files.cancel')}
+        title={t('files.delete')}
+        footer={(
+          <>
+            <Button variant="outline" disabled={busy} onClick={() => { setConfirmDelete(null) }}>
+              {t('files.cancel')}
+            </Button>
+            <Button variant="primary" disabled={busy} onClick={() => { void runDelete() }}>
+              {t('files.delete')}
+            </Button>
+          </>
+        )}
+      >
+        <div>{t('files.deleteConfirm', { name: confirmDelete?.name ?? '' })}</div>
+      </Modal>
     </div>
   )
 }
