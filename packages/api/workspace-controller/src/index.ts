@@ -51,7 +51,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** Host service backing the generated `ctx.remote.workspace` namespace. */
 export class WorkspaceController extends TypertRemoteService {
-  static inject = ['typert', 'workspaceRegistry', 'sessionPersistence']
+  static inject = ['typert', 'workspaceRegistry']
 
   static Config: z<Config, ResolvedConfig> = z.object({
     documentsDirectory: z.string(),

@@ -199,8 +199,20 @@ export class WorkspaceCommands {
    * @returns the archive and pin sets that remain.
    */
   async deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue> {
+    // Resolved from the context instead of declared in this plugin's `inject`: a
+    // required injection leaves the plugin pending wherever the composition
+    // provides persistence outside this plugin's scope, and with it the
+    // generated `workspace` namespace and every client service behind it.
+    const persistence = this.ctx.get('sessionPersistence')
+    if (persistence === undefined) {
+      throw new RemoteError(
+        'gateway/internal',
+        'cannot delete a session: this deployment composes no session persistence',
+        {},
+      )
+    }
     try {
-      await this.ctx.sessionPersistence.delete(request.sessionId)
+      await persistence.delete(request.sessionId)
     } catch (error) {
       if (error instanceof SessionAlreadyOwnedError) {
         throw new RemoteError(
