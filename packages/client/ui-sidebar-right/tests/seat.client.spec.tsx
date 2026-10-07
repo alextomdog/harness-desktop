@@ -497,7 +497,9 @@ describe('RightbarSeat presentation', () => {
       expect(h.layout()).toBe(before)
       fireEvent.contextMenu(element(h.view.container, '[data-dockkit-tab]'))
       expect(document.querySelector('[data-dockkit-tab-menu] [role^="menuitem"]')).toBeNull()
-      expect(h.view.container.querySelector('[data-dockkit-add-tab]')).toBeNull()
+      // The add control stays whatever is open: a guide already sitting here
+      // must not take the way back in away.
+      expect(h.view.container.querySelector('[data-dockkit-add-tab]')).not.toBeNull()
       return
     }
     expect(h.view.container.querySelector(`[data-dockkit-tab-close="${initial.id}"]`)).not.toBeNull()
@@ -511,7 +513,8 @@ describe('RightbarSeat presentation', () => {
     expect(reseeded.id).not.toBe(initial.id)
     fireEvent.click(element(h.view.container, '[data-dockkit-add-tab]'))
     const guide = Object.values(h.layout().tabs).find(tab => tab.kind === 'guide')!
-    expect(h.view.container.querySelector('[data-dockkit-add-tab]')).toBeNull()
+    // Still there after the guide opens, for the same reason.
+    expect(h.view.container.querySelector('[data-dockkit-add-tab]')).not.toBeNull()
     expect(h.view.container.querySelector(`[data-dockkit-tab-close="${reseeded.id}"]`)).not.toBeNull()
     expect(h.view.container.querySelector(`[data-dockkit-tab-close="${guide.id}"]`)).not.toBeNull()
     act(() => { h.controller.close(reseeded.id) })
@@ -942,7 +945,8 @@ describe('slot-owned useTabInfo', () => {
     h.open('right.txt', { paneId: right })
     const guide = getPane(h.layout(), right).tabs.find(id => h.layout().tabs[id]?.kind === 'guide')!
     act(() => { h.actions.closeTab(SESSION, guide) })
-    const add = element(h.view.container, '[data-dockkit-add-tab]')
+    // Every pane draws one now, so the right pane's is named explicitly.
+    const add = element(h.view.container, `[data-dockkit-pane="${right}"] [data-dockkit-add-tab]`)
     expect(add.closest('[data-dockkit-pane]')?.getAttribute('data-dockkit-pane')).toBe(right)
     fireEvent.click(add)
     expect(getPane(h.layout(), right).tabs.filter(id => h.layout().tabs[id]?.kind === 'guide')).toHaveLength(1)

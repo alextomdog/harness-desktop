@@ -619,7 +619,7 @@ describe('DockSurface', () => {
     expect(intents.focusPane).not.toHaveBeenCalled()
   })
 
-  it('draws the add control only where the embedder\'s canAddTab allows, pane by pane', () => {
+  it('draws the add control in every pane, whatever the embedder\'s canAddTab says', () => {
     const controller = seededController()
     controller.setExpanded(true)
     controller.splitPane()
@@ -630,6 +630,8 @@ describe('DockSurface', () => {
       <DockSurface
         state={snapshot.state}
         canSplit
+        // Denying a pane here is exactly what used to hide its control. It is
+        // drawn anyway: closing tabs must not take the way back in away.
         canAddTab={paneId => paneId === second}
         intents={controller}
         labels={TEST_LABELS}
@@ -637,9 +639,9 @@ describe('DockSurface', () => {
         chrome={<button type="button">chrome</button>}
       />,
     )
-    expect(document.querySelector(`[data-dockkit-pane="${first}"] [data-dockkit-add-tab]`)).toBeNull()
+    expect(document.querySelector(`[data-dockkit-pane="${first}"] [data-dockkit-add-tab]`)).not.toBeNull()
     expect(document.querySelector(`[data-dockkit-pane="${second}"] [data-dockkit-add-tab]`)).not.toBeNull()
-    // The strip's end controls stay: only the add control is missing.
+    // The strip's end controls stay beside it.
     const strip = document.querySelector(`[data-dockkit-pane="${first}"] [data-dockkit-strip]`)
     expect(strip?.querySelector('[data-dockkit-split-button]')).not.toBeNull()
     expect(strip?.querySelector('[data-dockkit-strip-tabs]')).not.toBeNull()

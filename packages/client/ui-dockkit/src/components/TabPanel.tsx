@@ -244,25 +244,23 @@ export function TabStrip({ state, pane, callbacks }: TabPanelProps): ReactNode {
     // float's own subtraction and swallows the panel's header and controls.
     <div className={css.tabStrip} role="tablist" data-dockkit-strip={pane.id}
       data-window-drag={state.floats.length === 0 ? true : undefined}>
-      {/* The add control leads the strip: it is how a tab gets in, so it holds
-          the same place whether the strip is empty or full, and it never moves
-          as tabs come and go. */}
-      {callbacks.canAddTab(pane.id) && (
-        <Tooltip label={callbacks.labels.addTab} side="bottom" delayMs={500}>
-          <button
-            type="button"
-            className={css.addTab}
-            aria-label={callbacks.labels.addTab}
-            data-dockkit-add-tab={pane.id}
-            onClick={(event) => {
-              event.stopPropagation()
-              callbacks.onAddTab(pane.id)
-            }}
-          >
-            <IconPlusOutlineRegular size={14} />
-          </button>
-        </Tooltip>
-      )}
+      {/* The add control leads the strip and is ALWAYS drawn: it is how a tab
+          gets in, so it must not come and go with what happens to be open — a
+          reader who just closed tabs still needs the way back in. */}
+      <Tooltip label={callbacks.labels.addTab} side="bottom" delayMs={500}>
+        <button
+          type="button"
+          className={css.addTab}
+          aria-label={callbacks.labels.addTab}
+          data-dockkit-add-tab={pane.id}
+          onClick={(event) => {
+            event.stopPropagation()
+            callbacks.onAddTab(pane.id)
+          }}
+        >
+          <IconPlusOutlineRegular size={14} />
+        </button>
+      </Tooltip>
       <div ref={stripTabs} className={css.stripTabs} role="presentation" data-dockkit-strip-tabs={pane.id}>
         {pane.tabs.map((tabId, index) => {
           const tab = getTab(state, tabId)
