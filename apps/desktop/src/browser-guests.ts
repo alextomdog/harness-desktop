@@ -254,7 +254,14 @@ export class DesktopBrowserGuests {
    */
   async screenshot(leaseId: string, format: 'png' | 'jpeg', quality?: number): Promise<Uint8Array> {
     const image = await this.guestOf(leaseId).capturePage()
-    return format === 'jpeg' ? image.toJPEG(quality ?? 90) : image.toPNG()
+    const bytes = format === 'jpeg' ? image.toJPEG(quality ?? 90) : image.toPNG()
+    if (bytes.length === 0) {
+      // A guest that is not being composited has nothing painted to capture: a
+      // window that is minimized or hidden, or a sidebar that is collapsed. Saying
+      // so beats handing back an empty file that reads as a broken tool.
+      throw new Error('the page has no painted surface to capture (is the window shown and the sidebar open?)')
+    }
+    return bytes
   }
 
   /** The live guest a lease names, or a refusal. */
