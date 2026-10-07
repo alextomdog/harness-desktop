@@ -16,7 +16,10 @@ export function apply(ctx: Context, limits: Config['excel']): void {
   const t = ctx.locale.bind('sidebarExcel')
   ctx.effect(() => ctx.documentPreviews.register({
     id, extensions: ['xlsx', 'xls', 'csv', 'tsv'], binaryExtensions: ['xlsx', 'xls'], priority: 'builtin',
-    title: () => t('title'), loading: 'bytes-complete', wrap: false,
+    // The delimited formats ARE text, so the reader edits the file itself and the
+    // grid follows on reload. The workbooks are binary: the UTF-8 round trip in
+    // the preview refuses them, so they stay read-only without a second rule here.
+    title: () => t('title'), loading: 'bytes-complete', wrap: false, editable: true,
   }))
   ctx.effect(() => ctx.slots.inject('sidebar.right.tab.document', () => ctx.slots.register({
     name: 'sidebar.right.tab.document', key: id, locale: 'sidebarExcel', inject: () => ({ limits }),
