@@ -14,7 +14,7 @@ import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolResult } from '@deepseek-ai/dsh-tools'
-import { FileSystem, FsError, FsTargetKey, FsVersion, type FsMkdirOutcome, type FsMoveOutcome } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsError, FsTargetKey, FsVersion, type FsMkdirOutcome, type FsMoveOutcome, type FsRemoveOutcome } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
   FsEditOutcome,
@@ -102,6 +102,9 @@ class FakeFs extends FileSystem {
   }
   override async move(_target: FsTarget, _destination: FsTarget): Promise<FsMoveOutcome> {
     throw new Error('move is not implemented by this fake')
+  }
+  override async remove(_target: FsTarget): Promise<FsRemoveOutcome> {
+    throw new Error('remove is not implemented by this fake')
   }
   override async editText(target: FsTarget, edit: FsEditRequest, expected?: { version: FsVersion }): Promise<FsEditOutcome> {
     this.throwIfArmed()

@@ -161,6 +161,15 @@ export interface FsMoveOutcome {
   readonly target: FsTarget
 }
 
+/** Outcome of removing one entry. */
+export interface FsRemoveOutcome {
+  /**
+   * What was removed, as the backend found it: a directory is reported as one
+   * even though removing it takes its contents with it.
+   */
+  readonly kind: 'file' | 'directory'
+}
+
 /** A literal-replacement edit request. */
 export interface FsEditRequest {
   /** Literal non-empty text to replace. Must match exactly (after line-ending normalization). */

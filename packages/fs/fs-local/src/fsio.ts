@@ -135,6 +135,18 @@ export async function moveEntry(source: string, destination: string, signal?: Ab
   await rename(source, destination)
 }
 
+/**
+ * Remove one entry. The caller has already refused a missing target and decided
+ * whether a directory's contents go with it.
+ * @param absolutePath - the absolute entry to remove.
+ * @param recursive - take a directory's contents with it.
+ * @param signal - aborts before the removal takes effect.
+ */
+export async function removeEntry(absolutePath: string, recursive: boolean, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal, 'delete')
+  await rm(absolutePath, { recursive, force: false })
+}
+
 /** Result of probing a path: null when it does not exist. */
 export interface PathInfo {
   version: FsVersion

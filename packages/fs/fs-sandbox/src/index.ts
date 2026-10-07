@@ -30,7 +30,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { Config as LocalConfig } from '@deepseek-ai/dsh-fs-local'
 import { FsError } from '@deepseek-ai/dsh-fs'
-import type { FsEditOutcome, FsEditRequest, FsMkdirOutcome, FsMoveOutcome, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
+import type { FsEditOutcome, FsEditRequest, FsMkdirOutcome, FsMoveOutcome, FsRemoveOutcome, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import { writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
@@ -147,6 +147,25 @@ export class SandboxedFileSystem extends LocalFileSystem {
       await this.checkedTarget(destination, sandboxPolicy),
       signal,
     )
+  }
+
+  /**
+   * Fence the removal by the per-call policy, then delegate to the inherited
+   * implementation. See {@link checkedTarget}.
+   * @param target - the resolved entry to remove.
+   * @param options - `recursive` takes a directory's contents with it.
+   * @param signal - aborts before the removal takes effect.
+   * @param sandboxPolicy - the per-call mode and workspace root; omit to use
+   *   the deployment fallback.
+   * @returns what was removed.
+   */
+  override async remove(
+    target: FsTarget,
+    options?: { readonly recursive?: boolean },
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsRemoveOutcome> {
+    return super.remove(await this.checkedTarget(target, sandboxPolicy), options, signal)
   }
 
   /**

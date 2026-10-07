@@ -890,3 +890,34 @@ describe('move', () => {
     expect(await fs.stat(await fs.resolve('dir'))).toBeUndefined()
   })
 })
+
+describe('remove', () => {
+  it('removes a file and reports what it was', async () => {
+    await fs.writeText(await fs.resolve('gone.txt'), 'x')
+    expect(await fs.remove(await fs.resolve('gone.txt'))).toEqual({ kind: 'file' })
+    expect(await fs.stat(await fs.resolve('gone.txt'))).toBeUndefined()
+  })
+
+  it('refuses a directory unless the caller asks for the tree, then takes it whole', async () => {
+    await fs.writeText(await fs.resolve('dir/one.txt'), 'one')
+    await expect(fs.remove(await fs.resolve('dir'))).rejects.toBeTruthy()
+    // The refusal left it intact: a caller that meant one entry loses nothing.
+    expect(await fs.readText(await fs.resolve('dir/one.txt'))).toBe('one')
+    expect(await fs.remove(await fs.resolve('dir'), { recursive: true })).toEqual({ kind: 'directory' })
+    expect(await fs.stat(await fs.resolve('dir'))).toBeUndefined()
+  })
+
+  it('refuses a target that is not there', async () => {
+    await expect(fs.remove(await fs.resolve('absent.txt'))).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
+  })
+
+  it('removes through the resolved identity, as every other mutation does', async () => {
+    // `resolve` names a symlink by what it resolves to, exactly as `writeText`
+    // does ("writes through a symlink update its target without replacing the
+    // link"): a removal follows the same identity rather than unlinking the link.
+    await fs.writeText(await fs.resolve('real.txt'), 'body')
+    await symlink(join(dir, 'real.txt'), join(dir, 'link.txt'))
+    expect(await fs.remove(await fs.resolve('link.txt'))).toEqual({ kind: 'file' })
+    expect(await fs.stat(await fs.resolve('real.txt'))).toBeUndefined()
+  })
+})

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
-import { FileSystem, FsError, FsVersion, type FsDirEntry, type FsEditOutcome, type FsEditRequest, type FsInfo, type FsMkdirOutcome, type FsMoveOutcome, type FsPathInfo, type FsTarget, type FsWriteOutcome } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsError, FsVersion, type FsDirEntry, type FsEditOutcome, type FsEditRequest, type FsInfo, type FsMkdirOutcome, type FsMoveOutcome, type FsPathInfo, type FsRemoveOutcome, type FsTarget, type FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import * as SkillFileSystem from '../src/index.ts'
 
 /** Every temp dir created by this file, removed after each test. */
@@ -156,6 +156,10 @@ class TestFileSystem extends FileSystem {
   }
 
   override async move(): Promise<FsMoveOutcome> {
+    throw new Error('not needed in skill tests')
+  }
+
+  override async remove(): Promise<FsRemoveOutcome> {
     throw new Error('not needed in skill tests')
   }
 }

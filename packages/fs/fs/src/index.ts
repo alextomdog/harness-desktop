@@ -20,6 +20,7 @@ import type {
   FsMoveOutcome,
   FsPathInfo,
   FsObservation,
+  FsRemoveOutcome,
   FsTarget,
   FsVersion,
   FsWriteIntent,
@@ -39,6 +40,7 @@ export type {
   FsInfo,
   FsMkdirOutcome,
   FsMoveOutcome,
+  FsRemoveOutcome,
   FsObservation,
   FsPathInfo,
   FsTarget,
@@ -331,6 +333,25 @@ export abstract class FileSystem extends Service {
     signal?: AbortSignal,
     sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsMoveOutcome>
+
+  /**
+   * Remove one entry. A directory needs `recursive: true`; without it a
+   * non-empty directory is refused by the platform rather than emptied, so a
+   * caller that only meant one entry cannot lose a tree by accident.
+   * @param target - the resolved entry to remove.
+   * @param options - `recursive` takes a directory's contents with it.
+   * @param signal - aborts before the removal takes effect.
+   * @param sandboxPolicy - the per-call mode and workspace root this removal
+   *   runs under; a sandboxing backend fences it, the bare backend ignores it.
+   *   Omit to leave the backend its own default.
+   * @returns what was removed.
+   */
+  abstract remove(
+    target: FsTarget,
+    options?: { readonly recursive?: boolean },
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsRemoveOutcome>
 }
 
 export default FileSystem

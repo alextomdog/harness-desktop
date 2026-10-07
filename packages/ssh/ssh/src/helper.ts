@@ -255,6 +255,18 @@ export async function runSshHelper(transport: HelperTransport): Promise<void> {
       const resolved = await policy(input.policy, signal)
       return ctx.fs.move(target, destination, signal, resolved)
     }
+    if (method === 'fs.remove') {
+      const input = z.object({
+        target: targetSchema, options: z.object({ recursive: z.boolean().optional() }).strict().optional(),
+        policy: policySchema,
+      }).strict().parse(raw)
+      const target = asTarget(input.target)
+      const resolved = await policy(input.policy, signal)
+      // Rebuilt rather than forwarded: the parsed shape allows an explicit
+      // `undefined` for `recursive`, which the seam's optional property does not.
+      const options = input.options?.recursive === undefined ? undefined : { recursive: input.options.recursive }
+      return ctx.fs.remove(target, options, signal, resolved)
+    }
     throw new Error(`Unknown SSH helper operation: ${method}`)
   })
   const closed = Promise.withResolvers<undefined>()

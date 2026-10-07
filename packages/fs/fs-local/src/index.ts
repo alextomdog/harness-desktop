@@ -20,6 +20,7 @@ import type {
   FsMkdirOutcome,
   FsMoveOutcome,
   FsPathInfo,
+  FsRemoveOutcome,
   FsTarget,
   FsWriteIntent,
   FsWriteOutcome,
@@ -30,6 +31,7 @@ import {
   localDisplayPath,
   makeDirectory,
   moveEntry,
+  removeEntry,
   normalizeLineEndings,
   probe,
   probeNoFollow,
@@ -330,6 +332,22 @@ export class LocalFileSystem extends FileSystem {
       await moveEntry(target.targetKey, destination.targetKey, signal)
       return { target: destination }
     }))
+  }
+
+  override async remove(
+    target: FsTarget,
+    options?: { readonly recursive?: boolean },
+    signal?: AbortSignal,
+  ): Promise<FsRemoveOutcome> {
+    return this.withLock(target.targetKey, async () => {
+      // No-follow probe: removing a symlink removes the link, not its target.
+      const existing = await probeNoFollow(target.targetKey)
+      if (existing === null) {
+        throw new FsError(`cannot delete "${target.displayPath}": no entry to delete`, 'FS_NOT_FOUND')
+      }
+      await removeEntry(target.targetKey, options?.recursive === true, signal)
+      return { kind: existing.type === 'directory' ? 'directory' : 'file' }
+    })
   }
 
   /* v8 ignore next 5 -- the post-write probe finding the file absent requires a

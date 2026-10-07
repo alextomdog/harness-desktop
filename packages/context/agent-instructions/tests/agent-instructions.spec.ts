@@ -11,7 +11,7 @@ import SessionStore, { SessionId, SessionSeq, type SessionEvent, type SurfaceInt
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import AgentRegistry, { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop, { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
-import { FileSystem, FsTargetKey, FsVersion, type FsMkdirOutcome, type FsMoveOutcome } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsTargetKey, FsVersion, type FsMkdirOutcome, type FsMoveOutcome, type FsRemoveOutcome } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
   FsEditOutcome,
@@ -197,6 +197,10 @@ class RecordingFileSystem extends FileSystem {
 
   override async move(_target: FsTarget, _destination: FsTarget): Promise<FsMoveOutcome> {
     return { target: _destination }
+  }
+
+  override async remove(_target: FsTarget): Promise<FsRemoveOutcome> {
+    return { kind: 'file' }
   }
 }
 
