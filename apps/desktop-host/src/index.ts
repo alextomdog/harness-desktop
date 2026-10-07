@@ -15,7 +15,7 @@ import { installDesktopQuitInspection } from './quit-inspection.ts'
 import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
 import { installDesktopBrowserControl } from './browser-cdp.ts'
-import { applyBrowserTools } from './browser-tools.ts'
+import { browserToolsPlugin } from './browser-tools.ts'
 
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
@@ -96,9 +96,9 @@ async function main(): Promise<void> {
   })
   process.once('disconnect', () => { void stop() })
   const { ctx } = await application
-  // Registered after the profile boots: the tools need the Host's registry, and
-  // the bridge they call is already listening for the shell's replies.
-  await ctx.plugin({ apply: (inner) => { applyBrowserTools(inner, browser) } })
+  // Registered after the profile boots: the plugin declares the tool registry it
+  // needs, so activation waits for it rather than racing it.
+  await ctx.plugin(browserToolsPlugin, browser)
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   control.quitInspection = installDesktopQuitInspection(ctx)
   await ctx.plugin(desktopOffice, {

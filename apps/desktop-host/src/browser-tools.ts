@@ -60,12 +60,60 @@ interface RuntimeEvaluation {
   }
 }
 
+/** Deadline for a navigation to show up in the guest's address. */
+const NAVIGATION_SETTLE_MS = 5_000
+
+/**
+ * Wait for the guest's address to move away from where it was.
+ *
+ * A navigation command returns before the navigation happens, so reading the
+ * address immediately reports the OLD one: an agent that trusted it would conclude
+ * the call failed when it had in fact succeeded — which is exactly what one
+ * reported after a working navigation. Waiting for the address to change is the
+ * cheap truthful answer; a redirect or a slow host ends at the deadline instead.
+ * @param control - the bridge.
+ * @param lease - the page being navigated.
+ * @param before - the address it held when the command was issued.
+ * @returns the address now, and whether it moved.
+ */
+async function waitForAddress(
+  control: DesktopBrowserControl,
+  lease: string,
+  before: string,
+): Promise<{ url: string; moved: boolean }> {
+  const until = Date.now() + NAVIGATION_SETTLE_MS
+  let url = before
+  for (;;) {
+    const pages = await control.list()
+    url = pages.find(candidate => candidate.lease === lease)?.url ?? url
+    if (url !== before) return { url, moved: true }
+    if (Date.now() >= until) return { url, moved: false }
+    await new Promise((resolve) => { setTimeout(resolve, 150) })
+  }
+}
+
 /**
  * Register the built-in browser tools.
+ *
+ * A plugin rather than a bare call: `ctx.tools` is a service, and cordis refuses
+ * to hand one over without an `inject` declaration — reaching for it directly made
+ * the whole Host fail to start. Declaring it also makes the tools wait for the
+ * registry instead of racing it.
+ */
+export const browserToolsPlugin = {
+  name: 'desktop-browser-tools',
+  inject: ['tools'],
+  apply(ctx: Context, control: DesktopBrowserControl): void {
+    registerBrowserTools(ctx, control)
+  },
+}
+
+/**
+ * Register the tools against one bridge.
  * @param ctx - the plugin context carrying the tool registry.
  * @param control - the shell bridge.
  */
-export function applyBrowserTools(ctx: Context, control: DesktopBrowserControl): void {
+function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): void {
   ctx.tools.register(defineTool({
     name: 'select_page',
     description: 'List the pages the built-in browser (the right sidebar) has open, or pick one for later calls. '
@@ -122,13 +170,24 @@ export function applyBrowserTools(ctx: Context, control: DesktopBrowserControl):
     output: {
       schema: {
         type: 'object', additionalProperties: false,
-        properties: { url: { type: 'string', required: true } },
+        properties: {
+          url: { type: 'string', required: true },
+          moved: { type: 'boolean', required: true },
+        },
       },
-      render: (_args, value) => [{ type: 'text', text: `Navigated to ${value.url}` }],
+      render: (_args, value) => [{
+        type: 'text',
+        // What the page reports, and whether it actually went anywhere. A reload
+        // keeps its address, so it is reported as landed rather than as a failure.
+        text: value.moved || value.url !== ''
+          ? `Navigated to ${value.url}`
+          : 'The page did not report an address after the command.',
+      }],
     },
     async execute(args) {
       const { page } = await resolveTarget(control, args.pageIdx)
       if (page === undefined) throw new Error('no page to navigate')
+      const before = page.url
       const type = args.type ?? 'url'
       if (type === 'url') {
         if (args.url === undefined || args.url === '') throw new Error('type url needs a url')
@@ -147,10 +206,10 @@ export function applyBrowserTools(ctx: Context, control: DesktopBrowserControl):
         if (entry === undefined) throw new Error(`no ${type} entry in this page's history`)
         await control.command(page.lease, 'Page.navigateToHistoryEntry', { entryId: entry.id })
       }
-      // The guest's URL is the truthful answer: a redirect is not the url we asked for.
-      const pages = await control.list()
-      const landed = pages.find(candidate => candidate.lease === page.lease)
-      return { url: landed?.url ?? args.url ?? page.url }
+      // The command returns before the page moves, so read the address back until
+      // it changes. A redirect lands somewhere else and is reported as it is.
+      const landed = await waitForAddress(control, page.lease, before)
+      return { url: landed.url, moved: type === 'reload' ? true : landed.moved }
     },
   }))
 
