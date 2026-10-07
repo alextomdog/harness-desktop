@@ -46,14 +46,15 @@ function valueOf(cell: Cell): ExcelJS.CellValue {
 
 /**
  * The cached result a formula value carries, in the narrow shape it accepts.
- * A structure the grid holds — rich text, an error object — is left out rather
- * than guessed at: the file keeps its formula, and no invented cache travels
- * with it.
+ * The grid's own cell values are text, numbers, and booleans; anything else is
+ * left out rather than guessed at, so the file keeps its formula and no invented
+ * cache travels with it.
  */
-function cachedResultOf(cell: Cell): string | number | boolean | Date | undefined {
+function cachedResultOf(cell: Cell): string | number | boolean | undefined {
   const value = cell.v
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value
-  return value instanceof Date ? value : undefined
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+    ? value
+    : undefined
 }
 
 /**
