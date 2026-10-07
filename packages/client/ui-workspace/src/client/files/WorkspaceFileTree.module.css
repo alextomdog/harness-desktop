@@ -19,13 +19,15 @@
 }
 
 /* Tree-view rows, in the Explorer's shape: indent rails, the disclosure twisty,
-   then the entry's glyph, then the name. */
+   then the entry's glyph, then the name. The row spans its container — the hover
+   is the row — and the column is this padding, so a row's content starts on the
+   same left edge as the Sessions label above it. Depth rides on the rails. */
 .row {
   display: flex;
   align-items: center;
   gap: 2px;
   height: 22px;
-  padding: 0 4px 0 2px;
+  padding: 0 4px 0 calc(var(--dsh-workspace-indent, 0px) + 16px);
   border-radius: var(--dsw-radius-sm);
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;

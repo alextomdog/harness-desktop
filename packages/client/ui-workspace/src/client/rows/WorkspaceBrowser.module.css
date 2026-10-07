@@ -386,11 +386,13 @@
   color: var(--dsw-alias-label-primary);
 }
 
-/* The tree brings its own heading, so this only indents the section to the same
-   column as the Sessions label above it: both labels and every row's twisty then
-   sit on one left edge. */
+/* Placement only. The tree brings its own heading AND its own column, so this
+   must add no left padding: a padding here inset the whole section, which made
+   every box in it — the heading and each row — shorter than the Session rows
+   above it, and stacked a second indent under the heading's own. Every box in
+   the section now spans the row, and the column is carried inside the tree. */
 .groupFiles {
-  padding-left: calc(var(--dsh-workspace-indent, 0px) + 14px);
+  min-width: 0;
 }
 
 /* The file tree's own section below the Session list: the two halves of a
