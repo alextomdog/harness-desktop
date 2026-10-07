@@ -31,13 +31,10 @@ it('registers complete binary reads and removes the slot and locale on disposal'
     expect(registerLocale).toHaveBeenCalledWith('sidebarExcel', { zh, en })
     expect(register).toHaveBeenCalledOnce()
     expect(register.mock.calls[0]![1]).toBe(LazyExcelBody)
-    const options = register.mock.calls[0]![0] as { inject: () => { limits: unknown; save: unknown } }
+    const options = register.mock.calls[0]![0] as { inject: () => unknown }
     expect(options).toMatchObject({ locale: 'sidebarExcel' })
     expect(options.inject).toBeTypeOf('function')
-    // The save face travels with the registration: a renderer that writes back
-    // reaches the Remote through its own injection.
-    expect(options.inject().limits).toEqual(limits)
-    expect(typeof options.inject().save).toBe('function')
+    expect(options.inject()).toEqual({ limits })
   } finally { await fiber.dispose() }
   expect(registry.getSnapshot()).toEqual([])
   expect(removeLocale).toHaveBeenCalledOnce()

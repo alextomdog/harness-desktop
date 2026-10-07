@@ -63,7 +63,7 @@ it.each([en, zh])('lists only detected unsupported content and clears the notice
     .mockResolvedValueOnce(value)
   const view = render(<ExcelBody {...loadedProps} t={t} />)
   const notice = await screen.findByRole('note')
-  expect(notice.textContent).toBe(t('unsupportedReadOnly', {
+  expect(notice.textContent).toBe(t('unsupportedNotice', {
     features: [dictionary.charts, dictionary.images, dictionary.shapes, dictionary.conditionalFormatting].join(dictionary.featureSeparator),
   }))
   expect(screen.getByRole('button', { name: dictionary.formulaWarning })).toBeDefined()
@@ -75,7 +75,7 @@ it.each([en, zh])('lists only detected unsupported content and clears the notice
 it('does not list undetected unsupported features', async () => {
   mocked.parse.mockResolvedValueOnce({ ...value, unsupportedFeatures: ['charts'] })
   render(<ExcelBody {...loadedProps} />)
-  expect((await screen.findByRole('note')).textContent).toBe(makeTranslate(en)('unsupportedReadOnly', { features: en.charts }))
+  expect((await screen.findByRole('note')).textContent).toBe(makeTranslate(en)('unsupportedNotice', { features: en.charts }))
 })
 
 it('ignores a retired file result and cancels parsing when the bytes change', async () => {

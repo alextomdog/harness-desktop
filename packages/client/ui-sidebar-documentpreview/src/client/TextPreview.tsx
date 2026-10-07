@@ -391,9 +391,6 @@ export function TextPreview({
         )}
         {!(editing && editableText !== undefined) && content !== undefined && renderSlot('sidebar.right.tab.document', {
           resourceAddress: tab.contentId, content, wrap: state.wrap, scrollportRef: bindScrollport,
-          // Omitted, not `undefined`: an absent version is not the same key as an
-          // empty one, and a renderer that saves must see it as absent.
-          ...current?.version === undefined ? {} : { version: current.version },
           addResource: add, setResources: set,
         }, {
           entryKey: selected.id, hookContext: useTabInfo,

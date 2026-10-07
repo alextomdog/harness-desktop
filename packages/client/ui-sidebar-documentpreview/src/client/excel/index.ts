@@ -3,7 +3,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '../index.ts'
 import type { Config } from '../../config.ts'
 import { LazyExcelBody } from './LazyExcelBody.tsx'
-import { createWriteBytes, type SessionFile } from '../rpc.ts'
 import { en, zh } from './locales.ts'
 
 /**
@@ -23,13 +22,6 @@ export function apply(ctx: Context, limits: Config['excel']): void {
     title: () => t('title'), loading: 'bytes-complete', wrap: false, editable: true,
   }))
   ctx.effect(() => ctx.slots.inject('sidebar.right.tab.document', () => ctx.slots.register({
-    name: 'sidebar.right.tab.document', key: id, locale: 'sidebarExcel',
-    inject: () => ({
-      limits,
-      // One save per file, built from the address the tab carries: the same path
-      // means different files in different sessions.
-      save: (file: SessionFile, data: Uint8Array, expectedVersion: string, signal: AbortSignal) =>
-        createWriteBytes(ctx.remote, file)(data, expectedVersion, signal),
-    }),
+    name: 'sidebar.right.tab.document', key: id, locale: 'sidebarExcel', inject: () => ({ limits }),
   }, LazyExcelBody)))
 }
