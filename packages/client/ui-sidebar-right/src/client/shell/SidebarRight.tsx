@@ -163,11 +163,10 @@ export function intentsFor(sessionId: SessionId, actions: Store['actions'], open
     focusTab: (tabId) => { actions.focusTab(sessionId, tabId) },
     focusPane: (paneId) => { actions.focusPane(sessionId, paneId) },
     splitPane: splitPane ?? ((paneId) => { actions.splitPane(sessionId, paneId) }),
-    // The guide is unique per pane: the control is drawn only while its pane
-    // holds none (`canAddTab` below) and asks for one there without regard to
-    // guides in other panes; the store settles the open on a guide the pane
-    // already holds, so the ask is idempotent all the same.
-    addTab: (paneId) => { openTab(GUIDE_KIND, { paneId, revealIfOpened: false }) },
+    // The guide is unique per pane and stays the add control's destination, but
+    // the ask REVEALS it: a control that silently resolves to a tab already
+    // sitting behind another one reads as a button that does nothing.
+    addTab: (paneId) => { openTab(GUIDE_KIND, { paneId, revealIfOpened: true }) },
     closeTab: closeTab ?? ((tabId) => { actions.closeTab(sessionId, tabId) }),
     duplicateTab: (tabId) => { actions.duplicateTab(sessionId, tabId) },
     floatTab: (tabId, rect?: FloatRect) => { actions.floatTab(sessionId, tabId, rect) },

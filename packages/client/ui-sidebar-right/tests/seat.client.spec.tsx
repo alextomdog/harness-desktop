@@ -996,9 +996,10 @@ describe('intentsFor — the kit\'s gestures as one session\'s store actions', (
     expect(actions.moveFloat).toHaveBeenCalledWith(SESSION, PANE_2, 30, 40)
     expect(actions.resizeFloat).toHaveBeenCalledWith(SESSION, PANE_2, rect)
     expect(actions.resizeSplit).toHaveBeenCalledWith(SESSION, SPLIT_1, [0.3, 0.7])
-    // The add control is the guide opened by kind, in that pane, beside any guide elsewhere.
+    // The add control opens the guide by kind, in that pane, and brings it
+    // forward: resolving to a hidden tab reads as a button that does nothing.
     intents.addTab(PANE_1)
-    expect(openTab).toHaveBeenCalledWith('guide', { paneId: PANE_1, revealIfOpened: false })
+    expect(openTab).toHaveBeenCalledWith('guide', { paneId: PANE_1, revealIfOpened: true })
   })
 })
 
