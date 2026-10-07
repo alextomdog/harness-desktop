@@ -667,12 +667,16 @@ describe('DockSurface', () => {
     expect(seedChip.querySelector('[data-dockkit-tab-close]')).toBeNull()
     expect(fileChip.querySelector('[data-dockkit-tab-close]')).not.toBeNull()
 
-    // The menu still opens on the withheld chip: the embedder's items remain reachable.
+    // The menu still opens on the withheld chip: the close family acts on the
+    // pane's other tabs, and the embedder's items remain reachable.
     fireEvent.contextMenu(seedChip)
-    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['embedder item'])
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent))
+      .toEqual([TEST_LABELS.closeOtherTabs, TEST_LABELS.closeTabsToRight, 'embedder item'])
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(fileChip)
+    // The last tab has nothing to its right, and the only other tab is unclosable,
+    // so both family items are withheld and only the chip's own close is offered.
     expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([TEST_LABELS.closeTab, 'embedder item'])
   })
 
@@ -749,7 +753,11 @@ describe('DockSurface', () => {
     renderSurface(controller, intents, true, undefined, { canCloseTab: tabId => tabId === allowed })
     expect(screen.getByRole('button', { name: TEST_LABELS.closeTab }).getAttribute('data-dockkit-tab-close')).toBe(allowed)
     fireEvent.contextMenu(screen.getByRole('tab', { name: 'Start' }))
-    expect(screen.queryByRole('menu')).toBeNull()
+    // That chip offers no close of its own, but the pane's other tab is closable,
+    // so the family items are the ones that carry the menu.
+    expect(screen.queryByRole('menuitem', { name: TEST_LABELS.closeTab })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: TEST_LABELS.closeOtherTabs })).toBeDefined()
+    fireEvent.pointerDown(document.body)
     fireEvent.contextMenu(screen.getByRole('tab', { name: /A/u }))
     fireEvent.click(screen.getByRole('menuitem', { name: TEST_LABELS.closeTab }))
     expect(intents.closeTab).toHaveBeenCalledExactlyOnceWith(allowed)

@@ -33,6 +33,10 @@ export interface DockLabels {
   readonly closeTabShortcut?: string | undefined
   /** Effective close keys shown as separate tooltip keycaps. */
   readonly closeTabKeys?: readonly string[] | undefined
+  /** Destroy every tab in this pane except this one. */
+  readonly closeOtherTabs: string
+  /** Destroy this tab and every tab after it in this pane. */
+  readonly closeTabsToRight: string
   /** The strip's add control, which seats the embedder's seeded tab. */
   readonly addTab: string
   /** Send a floating panel back into the docked tree. */
