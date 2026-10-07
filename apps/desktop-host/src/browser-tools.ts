@@ -253,7 +253,7 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
   ctx.tools.register(defineTool({
     name: 'take_screenshot',
     description: 'Capture a page of the built-in browser as an image, save it to a file, and return the path. '
-      + 'Read the file back with read_image to look at it.',
+      + 'Read the file back with read_image to look at it. Captures the visible viewport.',
     parameters: {
       pageIdx: { type: 'number', description: 'Page to capture, as select_page lists it. Defaults to the only page.' },
       format: { type: 'string', enum: ['png', 'jpeg'], description: 'Image format. Defaults to png.' },
@@ -280,9 +280,9 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       const shot = await control.command(page.lease, 'Page.captureScreenshot', {
         format,
         ...format === 'jpeg' && args.quality !== undefined ? { quality: args.quality } : {},
-        // The whole document, not just the part the pane happens to show: an agent
-        // reading a screenshot is usually looking for something below the fold.
-        captureBeyondViewport: true,
+        // The viewport, not the whole document: `captureBeyondViewport` asks the
+        // compositor to resize a webview guest's surface, which does not answer —
+        // it hung the first live attempt until the call's deadline fired.
       }) as { data?: string }
       if (shot.data === undefined || shot.data === '') throw new Error('the page returned no image data')
       const bytes = Buffer.from(shot.data, 'base64')
