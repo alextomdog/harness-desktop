@@ -240,6 +240,23 @@ export class DesktopBrowserGuests {
     }
   }
 
+  /**
+   * One page as an image, through Electron rather than the protocol.
+   *
+   * `Page.captureScreenshot` does not answer for a webview guest: the first live
+   * attempt hung until its deadline fired, and it kept doing so after the Page
+   * domain was enabled and the full-page flag dropped. Electron's own capture is
+   * the API a guest has.
+   * @param leaseId - the lease received from the Host.
+   * @param format - `png`, or `jpeg` at the given quality.
+   * @param quality - JPEG quality 0-100; ignored for png.
+   * @returns the image bytes.
+   */
+  async screenshot(leaseId: string, format: 'png' | 'jpeg', quality?: number): Promise<Uint8Array> {
+    const image = await this.guestOf(leaseId).capturePage()
+    return format === 'jpeg' ? image.toJPEG(quality ?? 90) : image.toPNG()
+  }
+
   /** The live guest a lease names, or a refusal. */
   private guestOf(leaseId: string): WebContents {
     const guest = this.leases.get(leaseId as DesktopBrowserLeaseId)?.guest

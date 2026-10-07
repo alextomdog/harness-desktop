@@ -60,6 +60,14 @@ export interface DesktopBrowserControl {
    */
   events(lease: string, since?: number): Promise<DesktopBrowserCapture>
   /**
+   * One page as an image, captured by the shell with Electron's own API.
+   * @param lease - the page.
+   * @param format - `png`, or `jpeg` at the given quality.
+   * @param quality - JPEG quality 0-100; ignored for png.
+   * @returns the image bytes.
+   */
+  screenshot(lease: string, format: 'png' | 'jpeg', quality?: number): Promise<Uint8Array>
+  /**
    * Route one message from the shell.
    * @param message - the message, as received.
    * @returns whether this bridge consumed it.
@@ -122,6 +130,12 @@ export function installDesktopBrowserControl(deadlineMs = BROWSER_COMMAND_DEADLI
         events: Array.isArray(reply.events) ? reply.events as readonly DesktopBrowserEvent[] : [],
         refused: Array.isArray(reply.refused) ? reply.refused as readonly DesktopBrowserRefusal[] : [],
       }
+    },
+    async screenshot(lease, format, quality): Promise<Uint8Array> {
+      const reply = await ask({ lease, screenshot: { format, ...quality === undefined ? {} : { quality } } })
+      if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
+      if (typeof reply.data !== 'string' || reply.data === '') throw new Error('desktop browser: the shell returned no image')
+      return Uint8Array.from(Buffer.from(reply.data, 'base64'))
     },
     handle(message: unknown): boolean {
       if (typeof message !== 'object' || message === null) return false

@@ -20,6 +20,12 @@ export interface DesktopBrowserCommandRequest {
   readonly params?: Record<string, unknown>
   /** Event-log read: the last sequence the Host already saw. */
   readonly eventsSince?: number
+  /**
+   * Screenshot request. Present means "capture this page as an image"; the shell
+   * uses Electron's own capture, because the protocol's does not answer for a
+   * webview guest.
+   */
+  readonly screenshot?: { readonly format?: string; readonly quality?: number }
 }
 
 /** Whether a message from the Host is a browser-bridge request. */
@@ -33,6 +39,14 @@ export function isDesktopBrowserCommandRequest(message: unknown): message is Des
   if (candidate.params !== undefined
     && (typeof candidate.params !== 'object' || candidate.params === null || Array.isArray(candidate.params))) return false
   if (candidate.eventsSince !== undefined && !Number.isSafeInteger(candidate.eventsSince)) return false
+  if (candidate.screenshot !== undefined) {
+    if (typeof candidate.screenshot !== 'object' || candidate.screenshot === null
+      || Array.isArray(candidate.screenshot)) return false
+    const shot = candidate.screenshot as Record<string, unknown>
+    if (shot.format !== undefined && shot.format !== 'png' && shot.format !== 'jpeg') return false
+    if (shot.quality !== undefined && typeof shot.quality !== 'number') return false
+    return typeof candidate.lease === 'string'
+  }
   // A listing carries no lease; everything else does. A method makes it a command,
   // and a lease without one is an event-log read — whose resume point is optional,
   // because the first read has nothing to resume from. Requiring the sequence here
@@ -68,6 +82,12 @@ export async function answerBrowserCommand(
       // The event log the debugger captured, resumed after what the Host saw, with
       // the domains that refused to report so an empty list can explain itself.
       reply({ ...guests.events(request.lease, request.eventsSince) })
+      return
+    }
+    if (request.screenshot !== undefined) {
+      const format = request.screenshot.format === 'jpeg' ? 'jpeg' : 'png'
+      const image = await guests.screenshot(request.lease, format, request.screenshot.quality)
+      reply({ data: Buffer.from(image).toString('base64'), format })
       return
     }
     const result = await guests.command(request.lease, request.method ?? '', request.params)

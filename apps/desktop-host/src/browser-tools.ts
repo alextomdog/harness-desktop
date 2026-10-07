@@ -277,18 +277,13 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       const { page } = await resolveTarget(control, args.pageIdx)
       if (page === undefined) throw new Error('no page to capture')
       const format = args.format ?? 'png'
-      const shot = await control.command(page.lease, 'Page.captureScreenshot', {
-        format,
-        ...format === 'jpeg' && args.quality !== undefined ? { quality: args.quality } : {},
-        // The viewport, not the whole document: `captureBeyondViewport` asks the
-        // compositor to resize a webview guest's surface, which does not answer —
-        // it hung the first live attempt until the call's deadline fired.
-      }) as { data?: string }
-      if (shot.data === undefined || shot.data === '') throw new Error('the page returned no image data')
-      const bytes = Buffer.from(shot.data, 'base64')
+      // Electron captures a guest; the protocol's own screenshot does not answer
+      // for one, which three live attempts reported as a shell that never replied.
+      const image = await control.screenshot(page.lease, format === 'jpeg' ? 'jpeg' : 'png', args.quality)
+      const bytes = Buffer.from(image)
       const path = args.filePath ?? join(tmpdir(), `dsh-browser-${String(Date.now())}.${format === 'jpeg' ? 'jpg' : 'png'}`)
       const target = await ctx.fs.resolve(path)
-      await ctx.fs.writeBytes(target, new Uint8Array(bytes))
+      await ctx.fs.writeBytes(target, image)
       return { path, bytes: bytes.length }
     },
   }))
