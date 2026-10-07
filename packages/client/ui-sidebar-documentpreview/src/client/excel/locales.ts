@@ -8,6 +8,11 @@ export const zh = {
   unsupportedNotice: '当前预览不支持此工作簿中的{features}。请使用系统应用打开，以获得完整体验。',
   charts: '图表', images: '图片', shapes: '形状', conditionalFormatting: '条件格式', featureSeparator: '、',
   retry: '重试',
+  saving: '保存中…', saved: '已保存',
+  saveStale: '文件已被改动；你的表格改动尚未保存',
+  saveKeepMine: '保留我的改动', saveDiscard: '改用文件现有内容',
+  saveFailed: '保存失败：',
+  unsupportedReadOnly: '此工作簿包含{features}，为避免保存时丢失，已保持只读。请使用系统应用编辑。',
 } satisfies Record<string, string>
 
 /** Excel preview dictionary keys. */
@@ -23,6 +28,11 @@ export const en = {
   unsupportedNotice: 'This preview does not support {features} in this workbook. Open it in a system application for the full experience.',
   charts: 'charts', images: 'images', shapes: 'shapes', conditionalFormatting: 'conditional formatting', featureSeparator: ', ',
   retry: 'Retry',
+  saving: 'Saving…', saved: 'Saved',
+  saveStale: 'The file changed; your edits to the sheet are not saved yet',
+  saveKeepMine: 'Keep my changes', saveDiscard: 'Use the file as it is',
+  saveFailed: 'Save failed: ',
+  unsupportedReadOnly: 'This workbook holds {features}; it stays read-only so a save cannot drop them. Edit it in a system application.',
 } satisfies Record<ExcelPreviewKey, string>
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

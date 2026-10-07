@@ -39,6 +39,12 @@ export interface DocumentBodyOwner {
   readonly resourceAddress: string
   /** Ordinary file content or a renderer-owned loading request; text accumulates until eof. */
   readonly content: DocumentContent
+  /**
+   * The version the content was read at, absent before a read lands. A renderer
+   * that writes back carries it as the save's basis, so a file that moved
+   * underneath the reader is refused rather than overwritten.
+   */
+  readonly version?: string
   /** The document toolbar's current wrapping preference. */
   readonly wrap: boolean
   /** Report a renderer-owned scrollport; passing `null` restores the shared body as the owner. */

@@ -143,6 +143,70 @@ export function createWriteFile(
 }
 
 /**
+ * The slice of the Client Remote a binary save calls, beside the text one so both
+ * halves of one file's traffic live in one place.
+ */
+export interface WorkspaceFilesWriteBytesRemote {
+  readonly workspaceFiles: {
+    /**
+     * Replace one binary file's whole content.
+     * @param sessionId - the session whose workspace resolves `path`.
+     * @param path - workspace path, absolute or relative to the workspace root.
+     * @param data - the complete new bytes, base64-encoded.
+     * @param expectedVersion - the version the tab read; the Host refuses a file written since.
+     * @param signal - cancels the call.
+     * @returns the file at its new version, or the failure the Host declares.
+     */
+    writeBytes(
+      sessionId: SessionId,
+      path: string,
+      data: string,
+      expectedVersion: string | undefined,
+      signal?: AbortSignal,
+    ): Promise<RemoteResult<{ readonly version: string }>>
+  }
+}
+
+/**
+ * The bytes as the request path carries them.
+ *
+ * The request is JSON, so a binary document travels base64-encoded. The chunking
+ * keeps `String.fromCharCode` off the call stack's limits: a workbook can be
+ * megabytes, and spreading that many code units into one call overflows it.
+ * @param bytes - the document's bytes.
+ * @returns the base64 text the endpoint decodes.
+ */
+export function base64Of(bytes: Uint8Array): string {
+  const CHUNK = 0x8000
+  let binary = ''
+  for (let at = 0; at < bytes.length; at += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + CHUNK))
+  }
+  return btoa(binary)
+}
+
+/**
+ * Bind one binary file's save to a Remote face.
+ * @param remote - the Client Remote carrying the `workspaceFiles` namespace.
+ * @param file - Session and path decoded from the tab address.
+ * @returns the save the renderer performs.
+ */
+export function createWriteBytes(
+  remote: WorkspaceFilesWriteBytesRemote,
+  file: SessionFile,
+): (data: Uint8Array, expectedVersion: string, signal: AbortSignal) => Promise<WriteWorkspaceFileOutcome> {
+  return async (data, expectedVersion, signal) => {
+    const result = await remote.workspaceFiles.writeBytes(
+      file.sessionId, file.path, base64Of(data), expectedVersion, signal,
+    )
+    if (result.ok) return { kind: 'saved', version: result.value.version }
+    return result.error.code === 'workspace-file/stale-version'
+      ? { kind: 'stale' }
+      : { kind: 'failed', message: result.error.message }
+  }
+}
+
+/**
  * Read a complete file through the Host endpoint.
  * @param file - Session and path decoded from the tab address.
  * @param signal - owning tab lifetime.
