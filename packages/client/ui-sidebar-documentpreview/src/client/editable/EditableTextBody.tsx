@@ -25,7 +25,7 @@
  * read. The caller enforces that; this component assumes it.
  */
 import {
-  useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode,
+  useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode,
 } from 'react'
 import { useCodeHighlighter } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HighlightSpan } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -126,6 +126,22 @@ export function EditableTextBody({
   }, [buffer, highlight, lines])
 
   /**
+   * Follow the caret's line, the way an editor marks where the reader is working.
+   *
+   * The line is counted from the caret offset rather than measured: the buffer is the same
+   * text the paint draws, so the count is exact and costs nothing per keystroke.
+   */
+  const [caretLine, setCaretLine] = useState(0)
+  const syncCaret = useCallback((): void => {
+    const area = areaRef.current
+    if (area === null) return
+    const upto = area.value.slice(0, area.selectionStart)
+    let line = 0
+    for (let at = upto.indexOf('\n'); at !== -1; at = upto.indexOf('\n', at + 1)) line += 1
+    setCaretLine(line)
+  }, [])
+
+  /**
    * Keep the paint and the gutter where the caret layer is.
    *
    * A textarea is the only scroller of the three, so the other two follow it — after a
@@ -223,29 +239,25 @@ export function EditableTextBody({
         )}
       </p>
       <div className={css.surface}>
-        <div
-          ref={gutterRef}
-          className={css.gutter}
-          aria-hidden
-          data-textpreview-gutter
-          // Wide enough for the longest number, so the text never shifts as it grows.
-          style={{ '--dsh-editor-digits': `${String(lines.length).length}ch` } as CSSProperties}
-        >
-          {lines.map((_content, index) => (
-            <div
-              className={css.lineNumber}
-              key={index}
-              data-textpreview-line-number
-              style={{ minWidth: 'var(--dsh-editor-digits)' }}
-            >
-              {index + 1}
-            </div>
-          ))}
-        </div>
         <div className={css.stack}>
           <pre ref={paintRef} className={css.highlight} aria-hidden data-textpreview-highlight>
             {spans.map((lineSpans, index) => (
-              <div className={css.highlightLine} key={index}>
+              <div
+                className={css.highlightLine}
+                key={index}
+                {...index === caretLine ? { 'data-textpreview-active-line': '' } : {}}
+              >
+                {/* The number lives INSIDE its line, so a line that wraps keeps one number
+                    on its first row and the wrapped rows stay indented under the text —
+                    which is what an editor does, and what a separate column cannot do. */}
+                <span
+                  className={css.lineNumber}
+                  aria-hidden
+                  data-textpreview-line-number
+                  {...index === caretLine ? { 'data-textpreview-active-line-number': '' } : {}}
+                >
+                  {index + 1}
+                </span>
                 {lineSpans.length === 0 || lineSpans.every(span => span.text === '')
                   // An empty line still needs a line box, or the paint drifts above the caret.
                   ? <br />
@@ -262,6 +274,12 @@ export function EditableTextBody({
             data-textpreview-textarea
             onKeyDown={onKeyDown}
             onScroll={syncLayers}
+            // A caret can move without a keystroke — a click, an arrow, a select-all — so
+            // the mark follows every path the browser reports, not only typing.
+            onSelect={syncCaret}
+            onKeyUp={syncCaret}
+            onClick={syncCaret}
+            onFocus={syncCaret}
             onChange={(event) => {
               const next = event.target.value
               // "Keep mine" asked for the current version; the reader's next keystroke

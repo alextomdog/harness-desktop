@@ -10,6 +10,8 @@
   --dsh-editor-font: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
   --dsh-editor-size: 12px;
   --dsh-editor-leading: 1.6;
+  --dsh-editor-gutter: 4ch;
+  --dsh-editor-inset: calc(var(--dsh-editor-pad) + var(--dsh-editor-gutter) + 8px);
 
   display: flex;
   flex: 1;
@@ -74,9 +76,14 @@
   user-select: none;
 }
 
+/* Pinned to its line's left edge, outside the text's inset, so it never wraps with it. */
 .lineNumber {
-  min-height: calc(var(--dsh-editor-size) * var(--dsh-editor-leading));
-  white-space: pre;
+  position: absolute;
+  left: 0;
+  width: var(--dsh-editor-gutter);
+  color: var(--dsh-text-tertiary, #9a9a9a);
+  text-align: right;
+  user-select: none;
 }
 
 .stack {
@@ -85,19 +92,22 @@
   min-width: 0;
 }
 
-/* Both layers set the same box, so one character lands on the same pixel in each. */
+/* Both layers set the same box, the same inset and the same wrapping, so one character
+   lands on the same pixel in each — including the rows a long line wraps onto. */
 .highlight,
 .area {
   position: absolute;
   inset: 0;
   margin: 0;
   padding: var(--dsh-editor-pad);
+  padding-left: var(--dsh-editor-inset);
   border: 0;
   font-family: var(--dsh-editor-font);
   font-size: var(--dsh-editor-size);
   line-height: var(--dsh-editor-leading);
   tab-size: 2;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 /* The paint layer: the highlighted source, never pointed at and never selected. */
@@ -108,7 +118,20 @@
 }
 
 .highlightLine {
+  position: relative;
   min-height: calc(var(--dsh-editor-size) * var(--dsh-editor-leading));
+}
+
+/* Where the caret is: a band behind that line, and its number picked out beside it, as an
+   editor marks the line being worked on. It spans the full width, so it reads as the line
+   rather than as the text on it. */
+.highlightLine[data-textpreview-active-line] {
+  background: var(--dsh-surface-hover, rgb(0 0 0 / 4%));
+  box-shadow: -100vw 0 0 var(--dsh-surface-hover, rgb(0 0 0 / 4%)), 100vw 0 0 var(--dsh-surface-hover, rgb(0 0 0 / 4%));
+}
+
+.lineNumber[data-textpreview-active-line-number] {
+  color: var(--dsh-text-primary, #1a1a1a);
 }
 
 /* The caret layer: the same text, invisible, so the caret owns what the paint shows. */

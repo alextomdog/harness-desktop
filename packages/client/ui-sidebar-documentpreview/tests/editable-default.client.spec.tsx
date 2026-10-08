@@ -45,4 +45,22 @@ describe('what a document opens as', () => {
     expect(view.container.querySelector('[data-textpreview-editor]')).toBeNull()
     expect(view.container.querySelectorAll('[data-textpreview-line]').length).toBeGreaterThan(0)
   })
+
+  it('marks the line the caret is on, and moves the mark with it', async () => {
+    const h = harness(twoPages, TAB_ID, { mode: 'document' })
+    const view = render(<TextPreview {...h.props()} />)
+    await settle()
+    const area = view.container.querySelector<HTMLTextAreaElement>('[data-textpreview-textarea]')
+    expect(area).not.toBeNull()
+    await act(async () => { fireEvent.select(area as HTMLTextAreaElement) })
+    // One mark, and it is the first line's, because the caret starts at the top.
+    expect(view.container.querySelectorAll('[data-textpreview-active-line]')).toHaveLength(1)
+    expect(view.container.querySelector('[data-textpreview-active-line-number]')?.textContent).toBe('1')
+    // The caret moves without a keystroke, and the mark follows it rather than staying put.
+    const field = area as HTMLTextAreaElement
+    field.setSelectionRange(field.value.length, field.value.length)
+    await act(async () => { fireEvent.select(field) })
+    expect(view.container.querySelectorAll('[data-textpreview-active-line]')).toHaveLength(1)
+    expect(view.container.querySelector('[data-textpreview-active-line-number]')?.textContent).toBe('3')
+  })
 })
