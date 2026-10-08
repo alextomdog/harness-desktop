@@ -333,6 +333,96 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
   }))
 
   ctx.tools.register(defineTool({
+    name: 'get_websocket_messages',
+    description: 'Inspect the WebSocket connections a page of the built-in browser opened, and their frames. '
+      + 'Without wsid it lists the connections; with wsid it lists that connection\'s frames, oldest first. '
+      + 'Note pageIdx here names the browser PAGE, as in every tool of this set; frameIdx pages the frames.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to read, as select_page lists it. Defaults to the only page.' },
+      wsid: { type: 'number', description: 'Connection to read, as the listing names it. Omit to list connections.' },
+      urlFilter: { type: 'string', description: 'List only connections whose URL contains this text.' },
+      direction: { type: 'string', enum: ['sent', 'received'], description: 'Only frames the page sent, or only those it received.' },
+      frameIdx: { type: 'number', description: 'Zero-based first frame to return. Defaults to the oldest.' },
+      frameIndex: { type: 'number', description: 'Return one frame by the index the listing shows, instead of a range.' },
+      pageSize: { type: 'number', description: 'Maximum frames to return. Defaults to 20.' },
+      showContent: { type: 'boolean', description: 'Include each frame\'s payload. Defaults to false.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          connections: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                wsid: { type: 'number', required: true },
+                url: { type: 'string', required: true },
+                closed: { type: 'boolean', required: true },
+              },
+            },
+          },
+          frames: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                index: { type: 'number', required: true },
+                wsid: { type: 'number', required: true },
+                direction: { type: 'string', required: true },
+                opcode: { type: 'number', required: true },
+                length: { type: 'number', required: true },
+                content: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.connections.length > 0
+          ? value.connections.map(socket => `wsid ${String(socket.wsid)} ${socket.closed ? '(closed)' : '(open)'} ${socket.url}`).join('\n')
+          : value.frames.length > 0
+            ? value.frames.map(frame => `${String(frame.index)} ${frame.direction} ${String(frame.length)}B`
+              + `${frame.content === undefined ? '' : ` ${frame.content}`}`).join('\n')
+            : 'No WebSocket traffic captured since this page attached; reload it to capture its load.',
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to read')
+      const capture = await control.events(page.lease)
+      requireDomains(capture, [NETWORK_DOMAIN])
+      const connections = socketsOf(capture.events)
+      if (args.wsid === undefined) {
+        return {
+          connections: connections
+            .filter(socket => args.urlFilter === undefined || socket.url.includes(args.urlFilter))
+            .map(socket => ({ wsid: socket.wsid, url: socket.url, closed: socket.closed })),
+          frames: [],
+        }
+      }
+      const all = framesOf(capture.events, connections)
+        .filter(frame => frame.wsid === args.wsid)
+        .filter(frame => args.direction === undefined || frame.direction === args.direction)
+      const chosen = args.frameIndex === undefined
+        ? all.slice(args.frameIdx ?? 0, (args.frameIdx ?? 0) + pageSizeOf(args.pageSize))
+        : all.filter(frame => frame.index === args.frameIndex)
+      return {
+        connections: [],
+        frames: chosen.map(frame => ({
+          index: frame.index,
+          wsid: frame.wsid,
+          direction: frame.direction,
+          opcode: frame.opcode,
+          length: frame.payload.length,
+          ...args.showContent === true ? { content: frame.payload.slice(0, 10_000) } : {},
+        })),
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'take_screenshot',
     description: 'Capture a page of the built-in browser as an image, save it to a file, and return the path. '
       + 'Read the file back with read_image to look at it. Without pageIdx it captures the browser area that is '
@@ -633,6 +723,82 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
       return { requests: requests.slice(-pageSizeOf(args.pageSize)) }
     },
   }))
+}
+
+/** One WebSocket a page opened, as the protocol announced it. */
+export interface CapturedSocket {
+  /** The socket's position in the page's lifetime, and what `wsid` names. */
+  readonly wsid: number
+  readonly requestId: string
+  readonly url: string
+  readonly closed: boolean
+}
+
+/**
+ * The sockets a page opened, numbered in the order it opened them.
+ *
+ * Numbering here rather than reusing the protocol's `requestId` is what makes a `wsid`
+ * stable across two calls: an agent lists the connections and then asks about one of
+ * them, and the protocol's own identifier is not something a listing can show.
+ * @param events - the page's captured events.
+ * @returns one entry per socket, oldest first.
+ */
+export function socketsOf(events: readonly DesktopBrowserEvent[]): CapturedSocket[] {
+  const sockets: CapturedSocket[] = []
+  const byRequest = new Map<string, CapturedSocket>()
+  for (const event of events) {
+    const params = event.params as { requestId?: string; url?: string; response?: { url?: string } }
+    const requestId = params.requestId
+    if (requestId === undefined) continue
+    if (event.method === 'Network.webSocketCreated') {
+      const socket: CapturedSocket = {
+        wsid: sockets.length + 1,
+        requestId,
+        url: params.url ?? '',
+        closed: false,
+      }
+      sockets.push(socket)
+      byRequest.set(requestId, socket)
+    } else if (event.method === 'Network.webSocketClosed') {
+      const socket = byRequest.get(requestId)
+      if (socket !== undefined) sockets[sockets.indexOf(socket)] = { ...socket, closed: true }
+    }
+  }
+  return sockets
+}
+
+/** One frame a socket carried, in the order the page exchanged it. */
+export interface CapturedFrame {
+  readonly index: number
+  readonly wsid: number
+  readonly direction: 'sent' | 'received'
+  readonly opcode: number
+  readonly payload: string
+}
+
+/**
+ * Every frame the page's sockets carried, in exchange order.
+ * @param events - the page's captured events.
+ * @param sockets - the sockets those frames belong to.
+ * @returns one entry per frame, oldest first.
+ */
+export function framesOf(events: readonly DesktopBrowserEvent[], sockets: readonly CapturedSocket[]): CapturedFrame[] {
+  const frames: CapturedFrame[] = []
+  for (const event of events) {
+    const sent = event.method === 'Network.webSocketFrameSent'
+    if (!sent && event.method !== 'Network.webSocketFrameReceived') continue
+    const params = event.params as { requestId?: string; response?: { opcode?: number; payloadData?: string } }
+    const socket = sockets.find(candidate => candidate.requestId === params.requestId)
+    if (socket === undefined) continue
+    frames.push({
+      index: frames.length + 1,
+      wsid: socket.wsid,
+      direction: sent ? 'sent' : 'received',
+      opcode: params.response?.opcode ?? 1,
+      payload: params.response?.payloadData ?? '',
+    })
+  }
+  return frames
 }
 
 /** The scripts a page announced, in the order the protocol reported them. */
