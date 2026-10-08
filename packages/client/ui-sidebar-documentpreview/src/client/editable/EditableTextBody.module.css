@@ -148,3 +148,14 @@
   background: var(--dsh-selection, rgb(64 128 255 / 28%));
   color: transparent;
 }
+
+/* The close question: the dock refused, and these are the reader's two answers. */
+.closePrompt {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--dsh-border-subtle, rgb(0 0 0 / 8%));
+  background: var(--dsh-surface-hover, rgb(0 0 0 / 4%));
+  font-size: 12px;
+}

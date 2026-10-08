@@ -66,6 +66,12 @@ export interface EditableTextBodyProps {
   /** Report whether unsaved edits remain, for the chip's dot. */
   readonly onDirty: (dirty: boolean) => void
   readonly labels: EditableTextLabels
+  /** Whether a close was refused because this tab still holds unsaved edits. */
+  readonly closePrompt?: boolean
+  /** The close question's own words, translated by the caller. */
+  readonly closeLabels?: { readonly message: string; readonly discard: string; readonly cancel: string }
+  /** @param choice - the reader's answer about the unsaved edits. */
+  readonly onResolveClose?: (choice: 'discard' | 'cancel') => void
 }
 
 /**
@@ -73,7 +79,7 @@ export interface EditableTextBodyProps {
  * @returns the highlighted editable surface, its save state, and the conflict's choices.
  */
 export function EditableTextBody({
-  text, version, language, save, reload, onDirty, labels,
+  text, version, language, save, reload, onDirty, labels, closePrompt, closeLabels, onResolveClose,
 }: EditableTextBodyProps): ReactNode {
   const [buffer, setBuffer] = useState(text)
   const [state, setState] = useState<SaveState>('clean')
@@ -215,6 +221,24 @@ export function EditableTextBody({
           : ''
   return (
     <div className={css.editor} data-textpreview-editor>
+      {/* The dock refused the close; this is why, and the two things the reader can do about
+          it. Saving is the editor's own Ctrl+S path — the one the whole tab already trusts —
+          so the prompt does not grow a second way to write the file. */}
+      {closePrompt === true && closeLabels !== undefined && (
+        <div className={css.closePrompt} role="status" data-textpreview-close-prompt>
+          <span>{closeLabels.message}</span>
+          <button
+            type="button"
+            data-textpreview-close-discard
+            onClick={() => { onDirty(false); onResolveClose?.('discard') }}
+          >{closeLabels.discard}</button>
+          <button
+            type="button"
+            data-textpreview-close-cancel
+            onClick={() => { onResolveClose?.('cancel') }}
+          >{closeLabels.cancel}</button>
+        </div>
+      )}
       <p className={css.status} data-textpreview-save={state} hidden={line === '' && state !== 'clean'}>
         <span className={css.statusText}>{line === '' ? labels.saveHint : line}</span>
         {state === 'stale' && (

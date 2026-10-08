@@ -427,6 +427,18 @@ export function TextPreview({
             {...language === undefined ? {} : { language }}
             reload={reload}
             onDirty={(dirty) => { actions.dirtied(tab.id, dirty) }}
+            // The dock refused the close; these are the two answers, and saving stays the
+            // editor's own Ctrl+S so the file is written one way and only one way.
+            closePrompt={state?.closePrompt === true}
+            closeLabels={{
+              message: t('close.unsaved'),
+              discard: t('close.discardAndClose'),
+              cancel: t('close.cancel'),
+            }}
+            onResolveClose={(choice) => {
+              actions.promptedClose(tab.id, false)
+              if (choice === 'discard') actions.dirtied(tab.id, false)
+            }}
             save={(value, expectedVersion, signal) => save(file, value, expectedVersion, signal)}
             labels={{
               saving: t('edit.saving'), saved: t('edit.saved'), stale: t('edit.stale'),
