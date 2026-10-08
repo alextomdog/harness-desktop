@@ -76,6 +76,7 @@ describe('ui-sidebar-browser apply', () => {
       acquire,
       release: vi.fn(async () => {}),
       onOpenRequested: vi.fn(() => () => {}),
+      onNewPage: vi.fn(() => () => {}),
     }
     vi.stubGlobal('dshDesktop', { protocolVersion, browser: bridge })
     const h = await boot()

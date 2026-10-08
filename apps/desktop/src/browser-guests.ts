@@ -53,6 +53,10 @@ interface Capture {
  */
 const CAPTURED_DOMAINS = ['Page.enable', 'Runtime.enable', 'Log.enable', 'Network.enable', 'Debugger.enable'] as const
 
+/** How long a requested page is waited for, and how often it is looked for. */
+const NEW_PAGE_DEADLINE_MS = 15_000
+const NEW_PAGE_POLL_MS = 100
+
 /** Owns workspace storage partitions independently from individual tab guests. */
 export class DesktopBrowserGuests {
   private readonly partitions = new Map<string, string>()
@@ -340,6 +344,38 @@ export class DesktopBrowserGuests {
     // not the selected one still keeps a 0×0 view, so there is nothing painted.
     throw new Error('the page has no painted surface to capture: its view measures 0×0, '
       + 'so the tab showing it is not the one on screen (or the sidebar is collapsed)')
+  }
+
+  /**
+   * Ask the window to open a browser page the Host can then drive.
+   *
+   * The sidebar owns which tabs exist, so the shell cannot make one: it asks the
+   * renderer, which opens it through the app's own tab API, and then waits for the new
+   * page to appear. Without this an agent looking at an empty sidebar has no page to
+   * address and no way to make one — which is exactly where every live run started.
+   * @param url - the absolute http(s) address to open.
+   * @returns the new page, or undefined when none appeared before the deadline.
+   */
+  async newPage(url: string): Promise<{ readonly lease: DesktopBrowserLeaseId; readonly url: string; readonly title: string } | undefined> {
+    const owner = this.anyOwner()
+    if (owner === undefined) return undefined
+    const before = new Set<DesktopBrowserLeaseId>(this.leases.keys())
+    owner.send(DESKTOP_IPC.browserNewPageRequested, { url })
+    const deadline = Date.now() + NEW_PAGE_DEADLINE_MS
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, NEW_PAGE_POLL_MS))
+      const added = this.list().find(page => !before.has(page.lease))
+      if (added !== undefined) return added
+    }
+    return undefined
+  }
+
+  /** A live owner window able to open a tab, preferring one that already holds a guest. */
+  private anyOwner(): WebContents | undefined {
+    for (const held of this.leases.values()) {
+      if (!held.owner.isDestroyed()) return held.owner
+    }
+    return BrowserWindow.getAllWindows().find(window => !window.isDestroyed())?.webContents
   }
 
   /** The live guest a lease names, or a refusal. */

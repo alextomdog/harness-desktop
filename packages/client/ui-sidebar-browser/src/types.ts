@@ -24,4 +24,15 @@ export interface DesktopBrowserBridge {
   release(lease: DesktopBrowserLeaseId): Promise<void>
   /** @param lease - originating guest. @param listener - approved URL consumer. @returns unsubscribe callback. */
   onOpenRequested(lease: DesktopBrowserLeaseId, listener: (url: string) => void): () => void
+  /**
+   * A page the Host asked the window to open, rather than one an existing guest asked
+   * for.
+   *
+   * The sidebar owns which tabs exist, so the shell cannot make one itself. It asks,
+   * the renderer opens the tab through the app's own API, and the page becomes
+   * addressable like any other — which is what an agent needs when it is looking at an
+   * empty sidebar and has nothing to drive.
+   * @param listener - approved URL consumer. @returns unsubscribe callback.
+   */
+  onNewPage(listener: (url: string) => void): () => void
 }

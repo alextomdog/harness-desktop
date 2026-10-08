@@ -297,6 +297,42 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
   }))
 
   ctx.tools.register(defineTool({
+    name: 'new_page',
+    description: 'Open a new page in the built-in browser and return it, so it can be driven. '
+      + 'Use this when no page is open, or to visit another address beside the one already showing.',
+    parameters: {
+      url: { type: 'string', required: true, description: 'The absolute http(s) address to open.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          pageIdx: { type: 'number', required: true },
+          url: { type: 'string', required: true },
+          title: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Opened ${value.url} as page ${String(value.pageIdx)}: ${value.title}`,
+      }],
+    },
+    async execute(args) {
+      if (!/^https?:\/\//i.test(args.url)) {
+        throw new Error('url must be an absolute http or https address')
+      }
+      const page = await control.newPage(args.url)
+      if (page === undefined) {
+        throw new Error('the built-in browser did not open a page: is the right sidebar available?')
+      }
+      // Reported last, so the position it names is the one a following call will find.
+      const pages = await control.list()
+      const pageIdx = pages.findIndex(candidate => candidate.lease === page.lease)
+      return { pageIdx: pageIdx < 0 ? 0 : pageIdx, url: page.url, title: page.title }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'take_screenshot',
     description: 'Capture a page of the built-in browser as an image, save it to a file, and return the path. '
       + 'Read the file back with read_image to look at it. Without pageIdx it captures the browser area that is '

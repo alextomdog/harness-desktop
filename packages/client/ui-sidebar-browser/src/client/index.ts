@@ -99,6 +99,13 @@ export function apply(ctx: Context): void {
     installFrames(scope, sessionId => options => createElectronPage(options, desktop,
       signal => browserWorkspace(scope.workspaces.list, sessionId, signal)))
   })
+  // A page the Host asked for, opened through the app's own tab API — the same call a
+  // chat link makes — so an agent facing an empty sidebar still gets something to drive.
+  if (desktop !== undefined) {
+    ctx.effect(() => desktop.onNewPage((url) => {
+      ctx.sidebarRight.openTab('browser', { params: { url } })
+    }), 'ui-sidebar-browser: host page')
+  }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab.title', key: BROWSER_ID, store,
   }, BrowserTitle)), 'ui-sidebar-browser.title')

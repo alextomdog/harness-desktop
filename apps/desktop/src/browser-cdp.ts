@@ -26,6 +26,11 @@ export interface DesktopBrowserCommandRequest {
    * webview guest.
    */
   readonly screenshot?: { readonly format?: string; readonly quality?: number }
+  /**
+   * A page to open. Present means "make one", and it is the only request that carries
+   * no lease: it is what an agent asks for when there is nothing to address yet.
+   */
+  readonly newPage?: { readonly url: string }
 }
 
 /** Whether a message from the Host is a browser-bridge request. */
@@ -38,6 +43,13 @@ export function isDesktopBrowserCommandRequest(message: unknown): message is Des
   if (candidate.method !== undefined && typeof candidate.method !== 'string') return false
   if (candidate.params !== undefined
     && (typeof candidate.params !== 'object' || candidate.params === null || Array.isArray(candidate.params))) return false
+  if (candidate.newPage !== undefined) {
+    if (typeof candidate.newPage !== 'object' || candidate.newPage === null) return false
+    const open = candidate.newPage as Record<string, unknown>
+    // Only a page the browser itself may visit: the renderer hands this straight to the
+    // tab, and a scheme it cannot follow would open a tab that goes nowhere.
+    return typeof open.url === 'string' && /^https?:\/\//i.test(open.url)
+  }
   if (candidate.eventsSince !== undefined && !Number.isSafeInteger(candidate.eventsSince)) return false
   if (candidate.screenshot !== undefined) {
     if (typeof candidate.screenshot !== 'object' || candidate.screenshot === null
@@ -74,6 +86,10 @@ export async function answerBrowserCommand(
     send({ type: 'browser-command', requestId: request.requestId, ...payload })
   }
   try {
+    if (request.newPage !== undefined) {
+      reply({ page: await guests.newPage(request.newPage.url) ?? null })
+      return
+    }
     if (request.lease === undefined) {
       reply({ pages: guests.list() })
       return

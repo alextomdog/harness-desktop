@@ -68,6 +68,12 @@ export interface DesktopBrowserControl {
    */
   screenshot(lease: string, format: 'png' | 'jpeg', quality?: number): Promise<Uint8Array>
   /**
+   * Ask the shell's window to open a page, and wait for it.
+   * @param url - the absolute http(s) address to open.
+   * @returns the new page, or undefined when none appeared.
+   */
+  newPage(url: string): Promise<DesktopBrowserPage | undefined>
+  /**
    * Route one message from the shell.
    * @param message - the message, as received.
    * @returns whether this bridge consumed it.
@@ -136,6 +142,12 @@ export function installDesktopBrowserControl(deadlineMs = BROWSER_COMMAND_DEADLI
       if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
       if (typeof reply.data !== 'string' || reply.data === '') throw new Error('desktop browser: the shell returned no image')
       return Uint8Array.from(Buffer.from(reply.data, 'base64'))
+    },
+    async newPage(url): Promise<DesktopBrowserPage | undefined> {
+      const reply = await ask({ newPage: { url } })
+      if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
+      const page = reply.page
+      return page === null || page === undefined ? undefined : page as DesktopBrowserPage
     },
     handle(message: unknown): boolean {
       if (typeof message !== 'object' || message === null) return false

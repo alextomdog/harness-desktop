@@ -30,6 +30,18 @@ describe('isDesktopBrowserCommandRequest', () => {
     expect(isDesktopBrowserCommandRequest({ type: 'browser-command', requestId: 1, lease: 2 })).toBe(false)
     expect(isDesktopBrowserCommandRequest({ type: 'browser-command', requestId: 1, method: 'Page.reload' })).toBe(false)
     expect(isDesktopBrowserCommandRequest({ type: 'browser-command', requestId: 1, lease: 'l', eventsSince: 1.5 })).toBe(false)
+    // Opening a page is the one request that carries no lease — there is nothing to
+    // address yet — so it must be recognised before the lease rule refuses it.
+    expect(isDesktopBrowserCommandRequest({
+      type: 'browser-command', requestId: 1, newPage: { url: 'https://example.com/' },
+    })).toBe(true)
+    expect(isDesktopBrowserCommandRequest({
+      type: 'browser-command', requestId: 1, newPage: { url: 'file:///etc/passwd' },
+    })).toBe(false)
+    expect(isDesktopBrowserCommandRequest({ type: 'browser-command', requestId: 1, newPage: {} })).toBe(false)
+    expect(isDesktopBrowserCommandRequest({
+      type: 'browser-command', requestId: 1, newPage: 'https://example.com/',
+    })).toBe(false)
     expect(isDesktopBrowserCommandRequest('nope')).toBe(false)
     expect(isDesktopBrowserCommandRequest(null)).toBe(false)
   })
@@ -47,6 +59,7 @@ describe('answerBrowserCommand', () => {
     list: () => [{ lease: 'l1', url: 'https://example.com/', title: 'Example' }],
     events: () => ({ events: [], refused: [] }),
     screenshot: shot ?? (() => Promise.resolve(new Uint8Array([1, 2, 3]))),
+    newPage: () => Promise.resolve({ lease: 'l2', url: 'https://example.com/', title: 'Example' }),
   }) as unknown as DesktopBrowserGuests
 
   it('captures a screenshot request instead of reading the event log', async () => {
@@ -69,5 +82,15 @@ describe('answerBrowserCommand', () => {
     }, (message) => { sent.push(message) })
     expect(shot).not.toHaveBeenCalled()
     expect(sent).toEqual([{ type: 'browser-command', requestId: 8, events: [], refused: [] }])
+  })
+
+  it('opens a page when one is asked for, before any lease rule can refuse it', async () => {
+    const sent: object[] = []
+    await answerBrowserCommand(guests(), {
+      type: 'browser-command', requestId: 9, newPage: { url: 'https://example.com/' },
+    }, (message) => { sent.push(message) })
+    expect(sent).toEqual([{
+      type: 'browser-command', requestId: 9, page: { lease: 'l2', url: 'https://example.com/', title: 'Example' },
+    }])
   })
 })

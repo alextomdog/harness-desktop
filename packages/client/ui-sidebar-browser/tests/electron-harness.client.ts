@@ -18,6 +18,7 @@ export function electronFixture(initial?: BrowserTabState) {
       opens.add(listener)
       return () => { opens.delete(listener) }
     }),
+    onNewPage: vi.fn(() => () => {}),
   } satisfies DesktopBrowserBridge
   const workspace = vi.fn(async (_signal: AbortSignal) => 'cwd:/workspace')
   const persist = vi.fn()

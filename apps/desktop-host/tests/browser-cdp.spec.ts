@@ -73,6 +73,17 @@ describe('installDesktopBrowserControl', () => {
     await failure
   })
 
+  it('asks the shell to open a page, carrying the address and no lease', async () => {
+    const control = installDesktopBrowserControl()
+    const sent = capture()
+    const opened = control.newPage('https://example.com/')
+    const request = sent[0]!
+    expect(request).toMatchObject({ newPage: { url: 'https://example.com/' } })
+    expect(request.lease).toBeUndefined()
+    answer(control, request, { page: { lease: 'l9', url: 'https://example.com/', title: 'Example' } })
+    await expect(opened).resolves.toEqual({ lease: 'l9', url: 'https://example.com/', title: 'Example' })
+  })
+
   it('reads the event log the shell captured, resuming where the caller stopped', async () => {
     const control = installDesktopBrowserControl()
     const sent = capture()
