@@ -178,6 +178,18 @@ export function installDesktopShortcuts(
         if (codes.length === 2 && keys.has(bindingKey(pair))) { binding = pair; priority = true }
       }
       const main = guestName === undefined && frame === contents.mainFrame
+      // A selection inside a page belongs to the page, and this is the only place that sees the
+      // reader's key while the guest has focus. It runs BEFORE the shortcut gate below on
+      // purpose: Shift+Space is not a registered chord, so a placement after that gate — where
+      // this first lived — could never run for a page at all, however correct it looked.
+      if (guestName !== undefined && input.type === 'keyDown' && input.shift
+        && input.code === 'Space' && !input.control && !input.alt && !input.meta) {
+        void contents.executeJavaScript('window.getSelection().toString()').then((text: unknown) => {
+          if (typeof text === 'string' && text.trim() !== '') {
+            window.webContents.send(DESKTOP_IPC.quoteSelection, text)
+          }
+        }).catch(() => undefined)
+      }
       if (!priority && (main || !match)) return
       event.preventDefault()
       if (input.type !== 'keyDown') return
@@ -195,19 +207,6 @@ export function installDesktopShortcuts(
       let embedding = frame
       while (guestName === undefined && !main && embedding.parent !== null && embedding.parent !== contents.mainFrame) {
         embedding = embedding.parent
-      }
-      // A selection inside a page belongs to the page. Only that guest's own WebContents can
-      // read it, so the quote is taken here and handed to the renderer, which inserts it
-      // through the very path the editor's and the conversation's selections already use.
-      // `executeJavaScript` rather than the debugger: attaching a debugger for a keystroke
-      // would contend with the browser tools that already own one.
-      if (guestName !== undefined && binding.code === 'Space' && input.shift
-        && !input.control && !input.alt && !input.meta) {
-        void contents.executeJavaScript('window.getSelection().toString()').then((text: unknown) => {
-          if (typeof text === 'string' && text.trim() !== '') {
-            window.webContents.send(DESKTOP_IPC.quoteSelection, text)
-          }
-        }).catch(() => undefined)
       }
       window.webContents.send(DESKTOP_IPC.shortcutsInput, { kind: guestName === undefined ? main ? 'keyboard' : 'iframe' : 'webview',
         revision, frameName: guestName ?? (main ? '' : embedding.name),
