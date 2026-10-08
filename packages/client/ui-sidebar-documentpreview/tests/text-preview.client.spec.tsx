@@ -364,6 +364,9 @@ describe('TextPreview — the file\'s metadata', () => {
     const h = harness({ 1: page(1, ['old'], true) })
     const otherId = 'tab-2' as TabId
     const other = harness({}, otherId)
+    // Both tabs read: the second tab's props come from the first store, so its reader
+    // preference has to be recorded there — the same write the toolbar's toggle makes.
+    h.instance.actions.edited(otherId, false)
     const firstProps = h.props()
     const secondProps = { ...firstProps, useTabInfo: other.props().useTabInfo }
     const first = render(<TextPreview {...firstProps} />)
@@ -629,7 +632,9 @@ describe('TextPreview — header controls', () => {
   })
 
   it('forgets at once when mounted for a record that has already ended', async () => {
-    const h = harness({ 1: page(1, ['a'], true) })
+    // The document face, not the reader: this case is about a tab that never gets to
+    // read at all, so no reader preference is recorded for it either.
+    const h = harness({ 1: page(1, ['a'], true) }, TAB_ID, { mode: 'document' })
     h.controller.abort()
     render(<TextPreview {...h.props()} />)
     await settle()

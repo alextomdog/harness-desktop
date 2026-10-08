@@ -92,7 +92,20 @@ async function boot() {
     ))
     return () => { removeBody(); removeDefinition() }
   })
-  return { rt, view, open, register, read, bytes }
+  const showReader = async (container: HTMLElement): Promise<void> => {
+    // Press it as soon as the document is drawn: it exists before the whole file
+    // arrives, and pressing it then is what keeps the reader's own paging — the pages
+    // the editor would otherwise read ahead — intact. A renderer that declares no
+    // editor has no toggle, and is already a reader.
+    const toggle = await waitFor(() => {
+      expect(container.querySelector('[data-document-preview], [data-textpreview-editor], [data-textpreview-state]')).not.toBeNull()
+      return container.querySelector<HTMLElement>('[data-textpreview-tool="edit"]')
+    })
+    if (toggle !== null && toggle.getAttribute('aria-pressed') === 'true') {
+      await act(async () => { fireEvent.click(toggle) })
+    }
+  }
+  return { rt, view, open, register, read, bytes, showReader }
 }
 
 describe('document extension seat', () => {
@@ -101,10 +114,16 @@ describe('document extension seat', () => {
     async (path) => {
       const h = await boot()
       act(() => { h.rt.ctx.sidebarRight.openResource(sessionFileAddress('address-session', path)) })
-      await waitFor(() => { expect(h.view.container.querySelectorAll('[data-textpreview-line]')).toHaveLength(2) })
-      expect(h.read.mock.calls).toEqual([
-        ['address-session', path, { offset: 1 }, expect.any(AbortSignal)],
+      // A small editable document opens in its editor and reads the whole file, so the
+      // reader holds every line. What this case is about survives that: EVERY read —
+      // the first page and the pages read ahead — goes through the file's own addressed
+      // Session, never the Session the tab happens to be mounted under.
+      await h.showReader(h.view.container)
+      await waitFor(() => { expect(h.view.container.querySelectorAll('[data-textpreview-line]')).toHaveLength(3) })
+      expect(h.read.mock.calls.map(([sessionId, callPath]) => [sessionId, callPath])).toEqual([
+        ['address-session', path], ['address-session', path],
       ])
+      expect(h.read.mock.calls[0]).toEqual(['address-session', path, { offset: 1 }, expect.any(AbortSignal)])
       expect(h.bytes).not.toHaveBeenCalled()
     },
   )
@@ -124,15 +143,14 @@ describe('document extension seat', () => {
     expect(h.view.container.querySelector('[data-textpreview-state]')).toBeNull()
   })
 
-  it('uses the plain-text body for an unknown extension and loads another page at the scroll edge', async () => {
+  it('reads a small editable file whole, so the reader it opens beside holds every line', async () => {
     const h = await boot()
     h.open('notes.unknown')
-    await waitFor(() => { expect(h.view.container.querySelectorAll('[data-textpreview-line]')).toHaveLength(2) })
-    expect(h.view.container.querySelector('[data-document-preview]')?.getAttribute('data-document-preview')).toBe(PLAIN_BODY_ID)
-    const body = h.view.container.querySelector<HTMLElement>('[data-textpreview-body]')!
-    Object.defineProperties(body, { clientHeight: { configurable: true, value: 100 }, scrollHeight: { configurable: true, value: 200 } })
-    fireEvent.scroll(body, { target: { scrollTop: 100 } })
+    await h.showReader(h.view.container)
+    // Two pages, both read before the reader is asked for anything: the editor holds the
+    // whole file, and a reader over that file shows all of it.
     await waitFor(() => { expect(h.view.container.querySelectorAll('[data-textpreview-line]')).toHaveLength(3) })
+    expect(h.view.container.querySelector('[data-document-preview]')?.getAttribute('data-document-preview')).toBe(PLAIN_BODY_ID)
     expect(h.read.mock.calls.map(([_sessionId, _path, range]) => range.offset)).toEqual([1, 3])
   })
 
@@ -168,11 +186,16 @@ describe('document extension seat', () => {
       remove = h.register('extension-reader', 'text-pages', 'extension')
     })
     h.open('notes.md')
+    await h.showReader(h.view.container)
     await waitFor(() => {
       expect(h.view.container.querySelector('[data-renderer="extension-reader"]')?.getAttribute('data-renderer-version')).toBe('v1')
     })
     await act(async () => { await remove!() })
+    // The builtin that takes over is editable, so it opens in its editor: reading it is
+    // the toolbar's toggle, exactly as for any other document.
+    await h.showReader(h.view.container)
     await waitFor(() => { expect(h.view.container.querySelector('[data-document-markdown]')).not.toBeNull() })
-    expect(h.read).toHaveBeenCalledOnce()
+    // One page through the extension reader, then the pages the editor reads ahead.
+    expect(h.read.mock.calls.map(([_sessionId, _path, range]) => range.offset)).toEqual([1, 3])
   })
 })

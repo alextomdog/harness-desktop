@@ -67,9 +67,9 @@ export function failure(code: string, details: Record<string, unknown> = {}): Re
 
 /** The `file` resource's metadata: live, or failed beside the last live value. */
 function meta(
-  version: string | undefined, failure: RemoteFailure | undefined,
+  version: string | undefined, failure: RemoteFailure | undefined, bytes: number,
 ): ResourceSnapshot<WorkspaceFileStat> {
-  const value = version === undefined ? undefined : { absolutePath: ABSOLUTE_PATH, version, bytes: 100 }
+  const value = version === undefined ? undefined : { absolutePath: ABSOLUTE_PATH, version, bytes }
   return failure === undefined
     ? { status: version === undefined ? 'loading' : 'live', value, failure: undefined }
     : { status: 'failed', value, failure }
@@ -122,13 +122,44 @@ export interface Harness {
 }
 
 /**
+ * Which face of one document a spec is about.
+ *
+ * A document now opens in its editor, and most of these specs are about how the
+ * READER reads: its pages, its loading indicator, the place it keeps. A spec that
+ * asserts reading therefore has to say so, exactly as a person does when they press
+ * the toolbar's read toggle — the same store write, not a test-only shortcut.
+ * `document` leaves the tab's preference unset, which is the real default and what
+ * the editor's own spec needs.
+ */
+export type HarnessMode = 'reader' | 'document'
+
+/** Options for one harness. */
+export interface HarnessOptions {
+  /** Which face the spec is about; defaults to `reader`. */
+  readonly mode?: HarnessMode
+  /**
+   * Size the metadata reports, in bytes.
+   *
+   * It decides what a document opens as: editing holds the whole file, so a small one
+   * opens in its editor and a large one in its reader. Defaults to a small file.
+   */
+  readonly bytes?: number
+}
+
+/**
  * One tab record's harness.
  * @param script - the page each offset resolves to; an unscripted offset fails `not-found`.
  * @param tabId - owning tab record.
+ * @param options - which face of the document this spec drives.
  * @returns the store, the scripted faces, and a props builder.
  */
-export function harness(script: Record<number, RemoteResult<WorkspaceFileText>> = {}, tabId = TAB_ID): Harness {
+export function harness(
+  script: Record<number, RemoteResult<WorkspaceFileText>> = {},
+  tabId = TAB_ID,
+  options: HarnessOptions = {},
+): Harness {
   const instance = createTextStore().create()
+  if ((options.mode ?? 'reader') === 'reader') instance.actions.edited(tabId, false)
   const pages: Record<number, RemoteResult<WorkspaceFileText>> = { ...script }
   const read = vi.fn<ReadWorkspaceFilePage>((_session, _path, offset) =>
     Promise.resolve(pages[offset] ?? failure('workspace-file/not-found', { path: PATH })))
@@ -136,8 +167,13 @@ export function harness(script: Record<number, RemoteResult<WorkspaceFileText>> 
   // Reading is what these cases exercise; a save is taken and reported as landed.
   const save = async (): Promise<WriteWorkspaceFileOutcome> => ({ kind: 'saved', version: 'v2' })
   const face = textFace(read, bytes, createResources(), save)(SESSION, instance.actions)
-  const current = { version: 'v1' as string | undefined, failure: undefined as RemoteFailure | undefined, snapshot: meta('v1', undefined) }
-  const refresh = (): void => { current.snapshot = meta(current.version, current.failure) }
+  const current = {
+    version: 'v1' as string | undefined,
+    failure: undefined as RemoteFailure | undefined,
+    bytes: options.bytes ?? 100,
+    snapshot: meta('v1', undefined, options.bytes ?? 100),
+  }
+  const refresh = (): void => { current.snapshot = meta(current.version, current.failure, current.bytes) }
   const useResource = vi.fn<() => ResourceSnapshot<WorkspaceFileStat>>(() => current.snapshot)
   const controller = new AbortController()
   onTestFinished(() => { controller.abort() })

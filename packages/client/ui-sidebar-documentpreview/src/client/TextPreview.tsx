@@ -36,6 +36,16 @@ import css from './TextPreview.module.css'
 export { linesOf, loadedPages, lastLineLoaded, scrollToLine } from './text/lines.ts'
 export type { LoadedPage } from './text/lines.ts'
 
+/**
+ * Largest file that opens in its editor rather than its reader.
+ *
+ * Paging exists so a large file never has to be held whole, and editing holds it
+ * whole. Below this size the editor is simply the better default; above it the reader
+ * opens, and the toolbar still offers to edit — an offer that reads the file, so the
+ * cost follows the reader's explicit choice instead of arriving with the tab.
+ */
+const EDIT_WHOLE_FILE_LIMIT = 1024 * 1024
+
 /** Private registration inputs; the framework binds the registry source to useDocumentPreviews. */
 export interface TextPreviewInjected extends TextInjected {
   readonly hooks: { readonly documentPreviews: ObservableSnapshot<readonly DocumentPreviewDefinition[]> }
@@ -77,7 +87,12 @@ export function TextPreview({
   const selected = candidates.find(candidate => candidate.id === state?.rendererId) ?? candidates[0]
   const mode = selected?.loading
   const contentRendererId = mode === 'renderer' ? selected?.id : undefined
-  const current = (state?.mode ?? 'text-pages') === mode && state?.contentRendererId === contentRendererId ? state : undefined
+  // What this tab has read, if it has read at all: the store's mode is absent before
+  // the first read, and a bucket can exist without one — every reader preference
+  // lives here too, and writing one must not look like a read that already happened.
+  // A fallback to the default mode did exactly that, which silently skipped the
+  // first read of a tab whose only prior write was a preference.
+  const current = state?.mode === mode && state?.contentRendererId === contentRendererId ? state : undefined
   const add = useCallback((address: string) => {
     addResource(tab.id, address, signal)
   }, [addResource, tab.id, signal])
@@ -91,9 +106,16 @@ export function TextPreview({
   const scrollportRef = useRef<HTMLElement | null>(null)
   const storedScrollTopRef = useRef(0)
   const [menuOpen, setMenuOpen] = useState(false)
-  // Editing is a mode of one preview, not a different tab: the reader flips it on
-  // the file they are looking at, and off again to read it.
-  const [editing, setEditing] = useState(false)
+  // A document opens in its editor: a file that can be edited should not need to be
+  // asked twice, and the renderer already says whether it can. The toolbar's toggle
+  // is the only thing that records a different wish, per tab, in the store.
+  //
+  // Editing holds the whole file, while paging exists so that a large one never has to
+  // be held at all — so the default follows the size the metadata already reports. A
+  // bigger file opens in its reader, where the toolbar still offers to edit it, and
+  // taking that offer reads the file: the reader's explicit choice, not a surprise.
+  const smallEnoughToEdit = meta.value?.bytes === undefined || meta.value.bytes <= EDIT_WHOLE_FILE_LIMIT
+  const editing = state?.editing ?? (selected?.editable === true && smallEnoughToEdit)
   const absolutePath = meta.value?.absolutePath ?? current?.complete?.absolutePath
   const displayPath = absolutePath ?? file.path
   // Contributions that hand the file to the Host wait for its Host path.
@@ -126,6 +148,16 @@ export function TextPreview({
     else if (mode === 'bytes-complete') loadAll(tab.id, file, signal, meta.value?.version)
     else prepareRenderer(tab.id, signal, selected.id, meta.value?.version)
   }, [started, tab.id, file, signal, loadPage, loadAll, prepareRenderer, canRead, mode, selected, meta.value?.version])
+
+  // The editor writes the WHOLE file back, so opening it must read the rest: the
+  // page cache holds only what the reader has scrolled through, and a save built from
+  // a partial read would truncate the file. Reading a page moves `loadedThrough`,
+  // which is what asks for the next one, and `eof` is what stops.
+  useEffect(() => {
+    if (!editing || mode !== 'text-pages' || !canRead) return
+    if (current === undefined || current.eof || current.loading || current.failure !== undefined) return
+    loadPage(tab.id, file, loadedThrough + 1, signal, meta.value?.version)
+  }, [editing, mode, canRead, current, loadedThrough, loadPage, tab.id, file, signal, meta.value?.version])
 
   // Come back where the reader was once there is content to scroll: on a remount,
   // after a reload rebuilt the content, or after the selected renderer changed.
@@ -327,7 +359,7 @@ export function TextPreview({
             </button>
           </Tooltip>
         </span>
-        {editableText !== undefined && (
+        {selected?.editable === true && (
           <Tooltip label={t(editing ? 'edit.stop' : 'edit.start')} side="bottom" delayMs={500}>
             <button
               type="button"
@@ -335,7 +367,7 @@ export function TextPreview({
               aria-pressed={editing}
               aria-label={t(editing ? 'edit.stop' : 'edit.start')}
               data-textpreview-tool="edit"
-              onClick={() => { setEditing(value => !value) }}
+              onClick={() => { actions.edited(tab.id, !editing) }}
             >
               <IconEditOutlineRegular />
             </button>
