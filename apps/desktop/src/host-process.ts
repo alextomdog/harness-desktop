@@ -210,7 +210,15 @@ export class DesktopHostProcess {
     })
     this.child = child
     child.stderr?.setEncoding('utf8')
-    child.stderr?.on('data', (chunk: string) => { this.stderr = (this.stderr + chunk).slice(-MAX_HOST_DIAGNOSTIC_CHARS) })
+    child.stderr?.on('data', (chunk: string) => {
+      this.stderr = (this.stderr + chunk).slice(-MAX_HOST_DIAGNOSTIC_CHARS)
+      // Copy it out as well as holding it. A child that dies while its last words are kept in
+      // memory is a child that died silently, and that is exactly how a failing Host looked:
+      // nothing in any log, and a shell still waiting for a URL it would never receive. The
+      // buffer stays, because a failure path still formats it; this only stops the reason
+      // from being invisible.
+      process.stderr.write(chunk)
+    })
     child.stdout?.pipe(process.stdout)
     child.on('message', (message: unknown) => {
       if (isDesktopBrowserCommandRequest(message)) {
