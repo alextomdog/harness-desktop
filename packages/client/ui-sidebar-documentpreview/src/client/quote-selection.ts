@@ -15,7 +15,6 @@
  * put the quote in, or nothing selected. The shortcut says which, in the reader's language.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 
@@ -47,48 +46,73 @@ function selectedText(): string {
  * @param sessionId - the session the reader is looking at.
  * @param quote - the selected text.
  */
-function quoteInto(ctx: Context, sessionId: string, quote: string): void {
-  const sessions = ctx.get('sessions')
-  const inputTriggers = ctx.get('inputTriggers')
-  const actx = sessions?.scope(sessionId as never)
-  const controller = actx === undefined ? undefined : inputTriggers?.sessionOf(actx)
-  if (controller === undefined) return
-  controller.openReference(undefined, {
-    ref: quote.slice(0, MAX_QUOTE),
-    appearance: 'text',
-  })
+/**
+ * Put one passage into the composer, as a quote the reader can type after.
+ * @param quote - the selected text.
+ */
+function quoteInto(quote: string): void {
+  // The passage goes in as TEXT, not as a chip, and that is a decision rather than a
+  // shortcut. A chip has to name an owning reference source, and a source is a whole menu
+  // group with candidates and pick handling: registering one just to quote would put a
+  // "selection" group into the composer's own menus, which is a side effect of a different
+  // feature. Quoting as text needs neither, and it is what the reader asked for — the
+  // passage in the draft, with the caret after it, ready for a question.
+  //
+  // `insertText` is the same path the composer already accepts typed and pasted text on, so
+  // the draft, its undo history and its height all behave exactly as they do for typing.
+  const composer = document.querySelector<HTMLElement>('[contenteditable=true]')
+  if (composer === null) return
+  composer.focus()
+  const quoted = quote.slice(0, MAX_QUOTE).split('\n').map(line => `> ${line}`).join('\n')
+  document.execCommand('insertText', false, `${quoted}\n\n`)
 }
 
 /**
  * Register the quote gesture.
  * @param ctx - the preview plugin's context.
  */
+/**
+ * The session the reader is looking at.
+ *
+ * The main view's session when one is marked, and otherwise the most recent one: quoting has
+ * to work in a window whose session the view has not marked yet, and refusing then would be
+ * refusing for a reason the reader cannot see or act on.
+ * @param ctx - the plugin's context.
+ * @returns the session to quote into, or undefined when there is none.
+ */
+function currentSession(ctx: Context): string | undefined {
+  // `ctx.get`, not `ctx.sessions`: reading a service off the context without declaring it
+  // THROWS, and inside a key handler that throw is invisible — the gesture simply does
+  // nothing, which is what it did for several rounds while looking like a binding problem.
+  const sessions = ctx.get('sessions')
+  if (sessions === undefined) return undefined
+  const rows = Object.values(sessions.list.getSnapshot().byId)
+  const main = rows.find(row => (row.retainedBy.mainView ?? 0) > 0)
+  const chosen = main ?? rows[rows.length - 1]
+  if (chosen === undefined) return undefined
+  return chosen.id
+}
+
 export function installQuoteShortcut(ctx: Context): void {
-  // Scoped rather than declared on the plugin: the preview does not need the composer to
-  // render a document, and a deployment without one must still draw files.
-  ctx.inject(['shortcuts', 'sessions', 'inputTriggers', 'locale'], (scope) => {
-    const t = scope.locale.bind('sidebarDocumentPreview')
-    scope.effect(() => scope.shortcuts.register({
-      id: 'composer.quoteSelection' as ShortcutCommandId,
-      label: () => t('quote.label'),
-      aliases: ['quote selection', 'quote into chat'],
-      defaults: {
-        'desktop:macos': { code: 'Space', modifiers: ['shift'] },
-        'desktop:windows': { code: 'Space', modifiers: ['shift'] },
-        'desktop:linux': { code: 'Space', modifiers: ['shift'] },
-        'web:macos': { code: 'Space', modifiers: ['shift'] },
-        'web:windows': { code: 'Space', modifiers: ['shift'] },
-      },
-      // Everywhere a selection can be made: the page, an editor, a terminal.
-      regions: ['page', 'editable', 'terminal'], modals: [],
-      resolve: () => {
-        const quote = selectedText().trim()
-        const session = Object.values(scope.sessions.list.getSnapshot().byId)
-          .find(row => (row.retainedBy.mainView ?? 0) > 0)
-        if (session === undefined) return { status: 'blocked', reason: t('quote.noSession') }
-        if (quote === '') return { status: 'blocked', reason: t('quote.noSelection') }
-        return { status: 'handled', run: () => { quoteInto(scope, session.id, quote) } }
-      },
-    }), 'ui-sidebar-documentpreview: quote selection')
-  })
+  // Captured at the page rather than registered as a command, for two reasons that are both
+  // about the gesture being what it is. Shift+Space is a TYPING key with a modifier, and the
+  // command registry binds letters — a Space binding is never matched, which is how this
+  // gesture first shipped doing nothing at all. And the gesture must work wherever a
+  // selection can be made, including inside the editor's own field, without the registry
+  // having to agree about which region that field belongs to.
+  //
+  // Capture phase, so the editor's own key handling never sees the key: a quote is not a
+  // space the reader meant to type.
+  window.addEventListener('keydown', (event) => {
+    const isSpace = event.code === 'Space' || event.key === ' '
+    if (!event.shiftKey || !isSpace) return
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+    const quote = selectedText().trim()
+    if (quote === '') return
+    const sessionId = currentSession(ctx)
+    if (sessionId === undefined) return
+    event.preventDefault()
+    event.stopPropagation()
+    quoteInto(quote)
+  }, { capture: true })
 }
