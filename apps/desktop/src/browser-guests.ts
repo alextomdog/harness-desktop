@@ -421,6 +421,38 @@ export class DesktopBrowserGuests {
     return BrowserWindow.getAllWindows().find(window => !window.isDestroyed())?.webContents
   }
 
+  /**
+   * The sidebar's open tabs, as the window is showing them.
+   *
+   * Read from the window's own DOM rather than from a second copy kept somewhere: the dock
+   * already publishes exactly this — a chip per tab, and a content cell per open tab whose
+   * cell is displayed only while that tab is the one on screen — so the answer is what the
+   * reader sees, not what some earlier event said they should be seeing.
+   * @returns one entry per open tab, or an empty list when no window can answer.
+   */
+  async openTabs(): Promise<readonly { readonly title: string; readonly visible: boolean }[]> {
+    const owner = this.anyOwner()
+    if (owner === undefined) return []
+    const script = `(() => {
+  const chips = [...document.querySelectorAll('[data-dockkit-tab]')];
+  const titles = new Map(chips.map(chip => [chip.dataset.dockkitTab, (chip.textContent || '').trim()]));
+  return [...document.querySelectorAll('[data-dockkit-content]')].map(cell => {
+    const host = cell.closest('[class*=tabCell]');
+    return {
+      title: titles.get(cell.dataset.dockkitContent) || '',
+      visible: host !== null && getComputedStyle(host).display !== 'none',
+    };
+  }).filter(tab => tab.title !== '');
+})()`
+    try {
+      const tabs = await owner.executeJavaScript(script, true) as unknown
+      return Array.isArray(tabs) ? tabs as { title: string; visible: boolean }[] : []
+    } catch {
+      // A window mid-reload has no dock yet; "nothing open" is the honest answer then.
+      return []
+    }
+  }
+
   /** The live guest a lease names, or a refusal. */
   private guestOf(leaseId: string): WebContents {
     const guest = this.leases.get(leaseId as DesktopBrowserLeaseId)?.guest

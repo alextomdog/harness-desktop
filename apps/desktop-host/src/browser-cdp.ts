@@ -48,6 +48,12 @@ export interface DesktopBrowserCapture {
 
 /** What the Host asks of the shell. */
 export interface DesktopBrowserControl {
+  /**
+   * The sidebar's open tabs, and which of them is the one on screen.
+   * @returns one entry per open tab; empty when no window can answer.
+   */
+  openTabs(): Promise<readonly { readonly title: string; readonly visible: boolean }[]>
+
   /** The live pages, oldest first. */
   list(): Promise<readonly DesktopBrowserPage[]>
   /** Run one DevTools Protocol command against one page. */
@@ -154,6 +160,18 @@ export function installDesktopBrowserControl(deadlineMs = BROWSER_COMMAND_DEADLI
       if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
       if (typeof reply.data !== 'string' || reply.data === '') throw new Error('desktop browser: the shell returned no image')
       return Uint8Array.from(Buffer.from(reply.data, 'base64'))
+    },
+    async openTabs(): Promise<readonly { readonly title: string; readonly visible: boolean }[]> {
+      const reply = await ask({ openTabs: true })
+      const tabs = (reply as { tabs?: unknown }).tabs
+      if (!Array.isArray(tabs)) return []
+      return tabs.flatMap((tab: unknown) => {
+        if (typeof tab !== 'object' || tab === null) return []
+        const entry = tab as { title?: unknown; visible?: unknown }
+        return typeof entry.title === 'string' && entry.title !== ''
+          ? [{ title: entry.title, visible: entry.visible === true }]
+          : []
+      })
     },
     async newPage(url): Promise<DesktopBrowserPage | undefined> {
       const reply = await ask({ newPage: { url } })

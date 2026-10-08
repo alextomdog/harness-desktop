@@ -613,6 +613,46 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
   }))
 
   ctx.tools.register(defineTool({
+    name: 'list_open_files',
+    description: 'List what the reader has open in the sidebar, and which of those tabs is the one on screen. '
+      + 'Use this to see the file someone is working in rather than only the page the browser is showing. '
+      + 'Titles are the tab labels, so a document, a terminal and a page all appear as they are named.',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          tabs: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                title: { type: 'string', required: true },
+                visible: { type: 'boolean', required: true },
+              },
+            },
+          },
+        },
+      },
+      render: (_args, value) => {
+        const tabs = value.tabs as readonly { readonly title: string; readonly visible: boolean }[]
+        if (tabs.length === 0) return [{ type: 'text', text: 'Nothing is open in the sidebar.' }]
+        const active = tabs.find(tab => tab.visible)
+        return [{
+          type: 'text',
+          text: `${String(tabs.length)} tab(s) open; the reader is looking at `
+            + `${active === undefined ? 'none of them' : `"${active.title}"`}:\n`
+            + tabs.map(tab => `${tab.visible ? '→' : ' '} ${tab.title}`).join('\n'),
+        }]
+      },
+    },
+    async execute() {
+      const tabs = await control.openTabs()
+      return { tabs: tabs.map(tab => ({ title: tab.title, visible: tab.visible })) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'clear_site_data',
     description: 'Clear the cookies and storage a page of the built-in browser keeps, and optionally its caches. '
       + 'Irreversible, and the page is NOT reloaded, so what it holds in memory stays until it navigates. '

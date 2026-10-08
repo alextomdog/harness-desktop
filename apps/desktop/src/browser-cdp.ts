@@ -32,6 +32,11 @@ export interface DesktopBrowserCommandRequest {
    */
   readonly newPage?: { readonly url: string }
   /**
+   * The sidebar's open tabs. Present means "report them": an agent that can see the page it
+   * may drive should also see the file the reader is actually working in.
+   */
+  readonly openTabs?: true
+  /**
    * Discard what capture holds for this lease.
    *
    * Present means "forget it": a caller about to reproduce an action asks for a clean
@@ -55,6 +60,7 @@ export function isDesktopBrowserCommandRequest(message: unknown): message is Des
   if (candidate.method !== undefined && typeof candidate.method !== 'string') return false
   if (candidate.params !== undefined
     && (typeof candidate.params !== 'object' || candidate.params === null || Array.isArray(candidate.params))) return false
+  if (candidate.openTabs !== undefined && candidate.openTabs !== true) return false
   if (candidate.newPage !== undefined) {
     if (typeof candidate.newPage !== 'object' || candidate.newPage === null) return false
     const open = candidate.newPage as Record<string, unknown>
@@ -106,6 +112,10 @@ export async function answerBrowserCommand(
     send({ type: 'browser-command', requestId: request.requestId, ...payload })
   }
   try {
+    if (request.openTabs === true) {
+      reply({ tabs: await guests.openTabs() })
+      return
+    }
     if (request.newPage !== undefined) {
       reply({ page: await guests.newPage(request.newPage.url) ?? null })
       return
