@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import { app, session, type BrowserWindow, type Session, type WebContents } from 'electron'
 import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
+import { offersPage } from './browser-pages.ts'
 import { DESKTOP_IPC } from './ipc.ts'
 
 interface GuestLease {
@@ -186,16 +187,25 @@ export class DesktopBrowserGuests {
   }
 
   /**
-   * Every live guest, oldest first: what an agent driving the built-in browser may
-   * address. A lease without an attached guest is a reservation, not a page.
-   * @returns one entry per live page, naming the lease it belongs to.
+   * Every live guest that has a page, oldest first: what an agent driving the
+   * built-in browser may address.
+   *
+   * Two things are filtered, for two different reasons. A lease without an attached
+   * guest is a reservation, not a page. A guest without a page — one that has not
+   * been navigated yet, or one whose page was closed, leaving it on `about:blank`
+   * while Chromium still reports the title it last had — is a document an agent
+   * cannot do anything with, and offering it by name is how a closed page keeps
+   * showing up in a list of the pages that are open.
+   * @returns one entry per addressable page, naming the lease it belongs to.
    */
   list(): readonly { readonly lease: DesktopBrowserLeaseId; readonly url: string; readonly title: string }[] {
     const pages: { lease: DesktopBrowserLeaseId; url: string; title: string }[] = []
     for (const [lease, held] of this.leases) {
       const guest = held.guest
       if (guest === undefined || guest.isDestroyed()) continue
-      pages.push({ lease, url: guest.getURL(), title: guest.getTitle() })
+      const url = guest.getURL()
+      if (!offersPage(url)) continue
+      pages.push({ lease, url, title: guest.getTitle() })
     }
     return pages
   }
