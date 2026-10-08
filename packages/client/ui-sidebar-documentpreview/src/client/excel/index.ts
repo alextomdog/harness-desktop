@@ -20,7 +20,7 @@ export function apply(ctx: Context, limits: Config['excel']): void {
     // The delimited formats ARE text, so the reader edits the file itself and the
     // grid follows on reload. The workbooks are binary: the UTF-8 round trip in
     // the preview refuses them, so they stay read-only without a second rule here.
-    title: () => t('title'), loading: 'bytes-complete', wrap: false, editable: true,
+    title: () => t('title'), loading: 'bytes-complete', wrap: false, editable: true, editsSelf: true,
   }))
   ctx.effect(() => ctx.slots.inject('sidebar.right.tab.document', () => ctx.slots.register({
     name: 'sidebar.right.tab.document', key: id, locale: 'sidebarExcel',

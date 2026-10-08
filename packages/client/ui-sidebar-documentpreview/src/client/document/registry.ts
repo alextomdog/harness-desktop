@@ -32,6 +32,16 @@ export interface DocumentPreviewDefinition {
    * there is no text of the reader's to write back.
    */
   readonly editable?: boolean
+  /**
+   * Whether this renderer's OWN surface is the editable one.
+   *
+   * `editable` says a file can be edited; this says by whom. A text file is edited in the
+   * text editor the preview provides, but a spreadsheet is edited in the grid that renders
+   * it — showing a CSV as delimited text because it happens to be text would be the one
+   * view its reader did not ask for. A renderer that edits itself therefore keeps the body,
+   * and the editor is what every other editable renderer gets.
+   */
+  readonly editsSelf?: boolean
 }
 
 /**

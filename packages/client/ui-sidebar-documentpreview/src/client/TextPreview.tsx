@@ -118,8 +118,11 @@ export function TextPreview({
   // remembers per tab like every other reader preference. So the editor is the default
   // rather than a state, and the menu is the alternative rather than a toggle.
   const editableDocument = selected?.editable === true
-  // Nobody has named an implementation: the editor is what that means, so it is the view.
-  const editorPreferred = editableDocument && state?.rendererId === undefined
+  // Nobody has named an implementation: the editor is what that means — unless the renderer
+  // edits itself, in which case its own surface is the editable one. A spreadsheet shown as
+  // delimited text because a CSV happens to be text would be the one view its reader did not
+  // ask for, and the grid is already the editor for it.
+  const editorPreferred = editableDocument && selected?.editsSelf !== true && state?.rendererId === undefined
   const absolutePath = meta.value?.absolutePath ?? current?.complete?.absolutePath
   const displayPath = absolutePath ?? file.path
   // Contributions that hand the file to the Host wait for its Host path.

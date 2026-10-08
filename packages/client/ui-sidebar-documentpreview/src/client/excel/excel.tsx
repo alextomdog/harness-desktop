@@ -26,7 +26,7 @@ import type { ExcelFormat } from './format.ts'
 import type { ExcelPreview } from './model.ts'
 import type { LoadedExcelBodyProps } from './LazyExcelBody.tsx'
 import { parseExcel } from './parse.ts'
-import { applyEdits } from './writeback.ts'
+import { applyEdits, serializeDelimited } from './writeback.ts'
 import css from './ExcelBody.module.css'
 
 type State = { data: Uint8Array<ArrayBuffer>; format: ExcelFormat } & ({ value: ExcelPreview } | { error: string })
@@ -55,9 +55,10 @@ export function ExcelBody({ content, format, limits, t, loading, save, version, 
   const baselineRef = useRef<readonly Sheet[] | undefined>(undefined)
   const workbookRef = useRef<HTMLDivElement>(null)
   const parsed = state !== undefined && !('error' in state) ? state.value : undefined
-  // A writer for this format, a version to guard on, and nothing the writer drops.
-  const writable = format === 'xlsx' && version !== undefined && parsed !== undefined
-    && parsed.unsupportedFeatures.length === 0
+  // A writer for this format, a version to guard on, and nothing the writer drops. A
+  // delimited file has nothing to drop: it is the grid it shows.
+  const writable = version !== undefined && parsed !== undefined
+    && (format === 'xlsx' ? parsed.unsupportedFeatures.length === 0 : format === 'csv' || format === 'tsv')
   useEffect(() => {
     if (data === undefined) return
     const controller = new AbortController()
@@ -100,8 +101,11 @@ export function ExcelBody({ content, format, limits, t, loading, save, version, 
     if (!writable || draft === undefined || data === undefined || parsed === undefined) return
     if (!force && (draft === baselineRef.current || saveState === 'stale')) return
     setSaveState('saving')
-    void applyEdits(data, parsed.sheets, draft).then(
-      bytes => save(file, bytes, version, new AbortController().signal),
+    const bytes = format === 'xlsx'
+      ? applyEdits(data, parsed.sheets, draft)
+      : Promise.resolve(serializeDelimited(draft, format === 'tsv' ? '\t' : ','))
+    void bytes.then(
+      written => save(file, written, version, new AbortController().signal),
     ).then((outcome) => {
       if (outcome.kind === 'saved') {
         baselineRef.current = draft

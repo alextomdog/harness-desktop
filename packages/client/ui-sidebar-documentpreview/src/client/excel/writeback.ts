@@ -57,6 +57,54 @@ function cachedResultOf(cell: Cell): string | number | boolean | undefined {
     : undefined
 }
 
+/** One field, quoted only when it must be to survive a round trip. */
+function quoteField(field: string, delimiter: string): string {
+  const mustQuote = field.includes(delimiter) || field.includes('"') || field.includes('\n') || field.includes('\r')
+  return mustQuote ? `"${field.replace(/"/gu, '""')}"` : field
+}
+
+/** One cell as the file should hold it: a formula stays a formula, and a blank stays blank. */
+function textOf(cell: Cell): string {
+  const value = cell.v
+  return value === undefined || value === null ? '' : String(value)
+}
+
+/**
+ * Write the grid back to delimited text.
+ *
+ * A CSV holds one grid and nothing else — no styles, no merges, no second sheet — so unlike
+ * a workbook there is nothing to patch: the file IS the grid, and every cell the reader sees
+ * is a cell the file should hold. Quoting is the part that has to be right, because it is
+ * the only thing standing between an edited field and a file that no longer parses: a field
+ * is quoted when it contains the delimiter, a quote, or a line break, and its own quotes are
+ * doubled, which is what the parser on the other side already assumes.
+ * @param sheets - the grid as the reader left it; the first sheet is the file.
+ * @param delimiter - `,` for csv, a tab for tsv.
+ * @returns the file's bytes, UTF-8.
+ */
+export function serializeDelimited(sheets: readonly Sheet[], delimiter: string): Uint8Array<ArrayBuffer> {
+  const cells = cellsOf(sheets[0])
+  if (cells.size === 0) return new TextEncoder().encode('')
+  let rows = 0
+  let columns = 0
+  for (const key of cells.keys()) {
+    const [row, column] = key.split(':').map(Number)
+    rows = Math.max(rows, (row ?? 0) + 1)
+    columns = Math.max(columns, (column ?? 0) + 1)
+  }
+  const lines: string[] = []
+  for (let row = 0; row < rows; row += 1) {
+    const fields: string[] = []
+    for (let column = 0; column < columns; column += 1) {
+      const cell = cells.get(`${String(row)}:${String(column)}`)
+      fields.push(quoteField(cell === undefined ? '' : textOf(cell), delimiter))
+    }
+    lines.push(fields.join(delimiter))
+  }
+  // A text file ends with a line break, and so does this one.
+  return new TextEncoder().encode(`${lines.join('\n')}\n`)
+}
+
 /**
  * Write the grid's cells into the workbook's own bytes.
  * @param original - the file as it was read.
