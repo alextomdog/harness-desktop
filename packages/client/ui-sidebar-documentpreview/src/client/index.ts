@@ -23,7 +23,7 @@ import type { WorkspaceFileParams } from '@deepseek-ai/dsh-api-workspace-files/c
 import { TextPreview } from './TextPreview.tsx'
 import type { TextPreviewInjected } from './TextPreview.tsx'
 import { TextTitle } from './TextTitle.tsx'
-import { TEXTPREVIEW_ID, textDefinition } from './definition.ts'
+import { TEXTPREVIEW_ID, TEXTPREVIEW_KIND, textDefinition } from './definition.ts'
 import { textFace } from './face.ts'
 import { createReadPage, createWriteFile } from './rpc.ts'
 import { createTextStore } from './store.ts'
@@ -92,6 +92,20 @@ export function apply(ctx: ClientContext): void {
   const disposePreviews = ctx.reflect.provide('documentPreviews', previews)
   ctx.effect(() => disposePreviews)
   ctx.effect(() => ctx.sidebarRightTabs.register(textDefinition()), 'ui-sidebar-documentpreview: text type')
+  // A tab holding unsaved work refuses to disappear without a word from the reader: the
+  // framework asks the kind before it takes anything apart, and the body reads the flag this
+  // sets to ask what to do about it. Scoped, so a deployment without the dock still draws
+  // files — the guard is the dock's question, not the preview's reason to exist.
+  ctx.inject(['sidebarRight'], (scope) => {
+    scope.effect(() => scope.sidebarRight.registerCloseGuard(TEXTPREVIEW_KIND, (sessionId, tab) => {
+      // The handle is a factory and the framework caches one instance per scope key, so this
+      // is the very instance the tab's body is reading — not a second copy of its state.
+      const instance = store.create(sessionId)
+      if (instance.store.getSnapshot().byTab[tab.id]?.dirty !== true) return true
+      instance.actions.promptedClose(tab.id, true)
+      return false
+    }), 'ui-sidebar-documentpreview: unsaved close guard')
+  })
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar-documentpreview: dictionaries')
   installQuoteShortcut(ctx)
 

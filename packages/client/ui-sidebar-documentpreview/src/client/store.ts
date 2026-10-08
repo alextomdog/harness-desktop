@@ -64,6 +64,14 @@ export interface TextTabState {
   /** The reader holds edits the file does not: what the chip's dot marks. */
   dirty: boolean
   /**
+   * Whether a close was refused because this tab still holds unsaved edits.
+   *
+   * The tab's kind can refuse the close, and it does — but a tab that simply does not go away
+   * is a tab that looks broken. This is what lets the body ask the reader what to do instead,
+   * the way an editor asks before it lets unsaved work disappear.
+   */
+  closePrompt: boolean
+  /**
    * Whether the reader asked for the editor, or is following the default.
    *
    * Absent means "not asked for anything in particular", and the default is the
@@ -98,8 +106,7 @@ export function fresh(): TextTabState {
     scrollTop: 0,
     wrap: true,
     revision: undefined,
-    dirty: false,
-    editing: undefined,
+    dirty: false, editing: undefined, closePrompt: false,
   }
 }
 
@@ -124,6 +131,8 @@ type TextActions = {
   toggledWrap: (draft: TextState, tabId: TabId) => void
   navigated: (draft: TextState, tabId: TabId, revision: number) => void
   dirtied: (draft: TextState, tabId: TabId, dirty: boolean) => void
+  /** @param value - whether the reader is being asked what to do about unsaved edits. */
+  promptedClose: (draft: TextState, tabId: TabId, value: boolean) => void
   edited: (draft: TextState, tabId: TabId, editing: boolean) => void
   forget: (draft: TextState, tabId: TabId) => void
 }
@@ -153,7 +162,7 @@ export function createTextStore(): EngineStoreHandle<TextState, TextActions> {
        * @param dirty - whether unsaved edits remain.
        */
       dirtied: (d, tabId: TabId, dirty: boolean) => { bucket(d, tabId).dirty = dirty },
-      /**
+      promptedClose: (d, tabId: TabId, value: boolean) => { bucket(d, tabId).closePrompt = value },      /**
        * Record the reader's wish to edit this file, or to read it instead.
        *
        * Per tab, like every other reader preference here: switching documents must
