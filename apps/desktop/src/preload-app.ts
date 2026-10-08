@@ -16,7 +16,7 @@ function createProductApi(): DshDesktopProductApi {
     browser: createDesktopBrowserBridge(),
     quotes: {
       subscribe(listener) {
-        const handle = (_event: Electron.IpcRendererEvent, text: string): void => { listener(text) }
+        const handle = (): void => { listener() }
         ipcRenderer.on(DESKTOP_IPC.quoteSelection, handle)
         return () => { ipcRenderer.off(DESKTOP_IPC.quoteSelection, handle) }
       },

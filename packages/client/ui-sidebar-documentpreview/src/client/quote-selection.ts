@@ -120,13 +120,19 @@ export function installQuoteShortcut(ctx: Context): void {
   // Capture phase, so the editor's own key handling never sees the key: a quote is not a
   // space the reader meant to type.
   ctx.effect(() => {
-    // A page's selection belongs to the page, so the shell reads it and hands it over; the
-    // insertion is the same call the editor's and the conversation's selections already make.
-    const products = (globalThis as {
-      dshDesktop?: { quotes?: { subscribe: (listener: (text: string) => void) => () => void } }
-    }).dshDesktop
-    const unsubscribe = products?.quotes?.subscribe((text: string) => {
-      if (text.trim() !== '') quoteInto(text)
+    // A page's selection belongs to the page, and this window owns the element that can read
+    // it: `executeJavaScript` on the webview. Reading it here rather than in the shell keeps
+    // the one API that cannot be exercised from outside the main process out of this path.
+    const products = (globalThis as { dshDesktop?: { quotes?: { subscribe: (listener: () => void) => () => void } } })
+      .dshDesktop
+    const unsubscribe = products?.quotes?.subscribe(() => {
+      const frame = document.querySelector('webview[data-sidebar-browser-frame]') as
+        | { executeJavaScript?: (code: string) => Promise<unknown> }
+        | null
+      if (frame === null || typeof frame.executeJavaScript !== 'function') return
+      void frame.executeJavaScript('window.getSelection().toString()').then((text: unknown) => {
+        if (typeof text === 'string' && text.trim() !== '') quoteInto(text)
+      }).catch(() => undefined)
     })
     return () => { unsubscribe?.() }
   }, 'ui-sidebar-documentpreview: quoted page selections')

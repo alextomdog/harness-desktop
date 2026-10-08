@@ -182,13 +182,13 @@ export function installDesktopShortcuts(
       // reader's key while the guest has focus. It runs BEFORE the shortcut gate below on
       // purpose: Shift+Space is not a registered chord, so a placement after that gate — where
       // this first lived — could never run for a page at all, however correct it looked.
+      //
+      // Only the SIGNAL travels from here. The renderer owns the webview element and reads the
+      // selection from it, which keeps one API out of this path that could not be verified
+      // from outside the main process.
       if (guestName !== undefined && input.type === 'keyDown' && input.shift
         && input.code === 'Space' && !input.control && !input.alt && !input.meta) {
-        void contents.executeJavaScript('window.getSelection().toString()').then((text: unknown) => {
-          if (typeof text === 'string' && text.trim() !== '') {
-            window.webContents.send(DESKTOP_IPC.quoteSelection, text)
-          }
-        }).catch(() => undefined)
+        window.webContents.send(DESKTOP_IPC.quoteSelection)
       }
       if (!priority && (main || !match)) return
       event.preventDefault()

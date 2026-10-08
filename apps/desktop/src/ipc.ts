@@ -75,12 +75,12 @@ export interface DesktopUpdatePresentation {
 export interface DshDesktopProductApi {
   readonly protocolVersion: 1
   /**
-   * Passages the reader quoted out of a page in the built-in browser.
+   * The reader pressed the quote gesture while a page in the built-in browser had focus.
    *
-   * The selection belongs to the guest, so only the shell can read it; this is how what it
-   * read reaches the composer, where the same insertion path as the other two cases runs.
+   * A signal, not the text: the page's selection belongs to the page, and the renderer owns
+   * the webview element that can read it.
    */
-  readonly quotes: { subscribe(listener: (text: string) => void): () => void }
+  readonly quotes: { subscribe(listener: () => void): () => void }
   readonly browser: DesktopBrowserBridge
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi
