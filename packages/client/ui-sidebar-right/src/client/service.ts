@@ -182,6 +182,18 @@ const RESOURCE_SCHEME = 'dsh-resource://'
 /** Synchronous close/replacement hook; resource owners retain any background cleanup. */
 export type SidebarRightCloseHandler = (sessionId: SessionId, tab: TabRecord) => void
 
+/**
+ * A type's veto over closing one of its own tabs.
+ *
+ * `closeHandlers` runs once a close has been decided, which is too late to refuse one. A type
+ * that owns unsaved work needs the earlier question, so it is asked separately: returning
+ * `false` keeps the tab open, and anything else lets the close proceed.
+ * @param sessionId - the session the tab is in.
+ * @param tab - the tab being closed.
+ * @returns whether the close may proceed.
+ */
+export type SidebarRightCloseGuard = (sessionId: SessionId, tab: TabRecord) => boolean
+
 /** The outward right-Sidebar face (`ctx.sidebarRight`). */
 export interface ISidebarRight {
   /**
@@ -267,6 +279,7 @@ export class SidebarRightController implements ISidebarRight {
   private readonly adopted: ReadonlyMap<SessionId, Adoption>
   private readonly rooms: ReadonlyMap<SessionId, RoomRule>
   private readonly closeHandlers = new Map<string, SidebarRightCloseHandler>()
+  private readonly closeGuards = new Map<string, SidebarRightCloseGuard>()
 
   /**
    * Register resource cleanup before explicit removal. Failure preserves the tab.
@@ -278,6 +291,22 @@ export class SidebarRightController implements ISidebarRight {
     if (this.closeHandlers.has(kind)) throw new Error(`sidebarRight: close handler already registered for ${kind}`)
     this.closeHandlers.set(kind, handler)
     return () => { if (this.closeHandlers.get(kind) === handler) this.closeHandlers.delete(kind) }
+  }
+
+  /**
+   * Let one tab kind refuse to close a tab of its own.
+   *
+   * The case this exists for is an editor holding unsaved work: the type knows, the framework
+   * does not, and a reader who closes such a tab asks for a decision rather than for the work
+   * to disappear. One guard per kind, like the handler it sits beside.
+   * @param kind - tab kind the guard owns.
+   * @param guard - asked before a close of that kind; `false` keeps the tab open.
+   * @returns a disposer that removes the guard.
+   */
+  registerCloseGuard(kind: string, guard: SidebarRightCloseGuard): () => void {
+    if (this.closeGuards.has(kind)) throw new Error(`sidebarRight: close guard already registered for ${kind}`)
+    this.closeGuards.set(kind, guard)
+    return () => { if (this.closeGuards.get(kind) === guard) this.closeGuards.delete(kind) }
   }
 
   /**
@@ -373,6 +402,8 @@ export class SidebarRightController implements ISidebarRight {
     if (actions === undefined || surface === undefined) return
     const tab = surface.layout.tabs[tabId]
     if (tab === undefined || !canCloseTab(surface, tabId)) return
+    // Before anything is taken apart: a type that owns unsaved work gets to say no.
+    if (this.closeGuards.get(tab.kind)?.(sessionId, tab) === false) return
     this.removeAfterCleanup(sessionId, tab, () => { actions.closeTab(sessionId, tabId) })
   }
 
