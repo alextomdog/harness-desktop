@@ -1,6 +1,6 @@
 /** Main-process ownership and fixed isolation policy for Sidebar webview guests. */
 import { randomUUID } from 'node:crypto'
-import { app, session, type BrowserWindow, type Session, type WebContents } from 'electron'
+import { app, BrowserWindow, session, type Session, type WebContents } from 'electron'
 import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { offersPage } from './browser-pages.ts'
 import { DESKTOP_IPC } from './ipc.ts'
@@ -266,13 +266,25 @@ export class DesktopBrowserGuests {
    * @returns the image bytes.
    */
   async screenshot(leaseId: string, format: 'png' | 'jpeg', quality?: number): Promise<Uint8Array> {
-    const image = await this.guestOf(leaseId).capturePage()
+    const lease = this.leases.get(leaseId as DesktopBrowserLeaseId)
+    if (lease?.guest === undefined || lease.guest.isDestroyed()) {
+      throw new Error('desktop browser: no live guest holds that lease')
+    }
+    // A minimized window paints nothing: the whole sidebar lays out to zero and the
+    // capture comes back empty. This is worth naming exactly, because it is the
+    // difference between "your page cannot be captured" and "restore the window".
+    // A live run measured the window at 159×27, minimized, with `document.hidden`
+    // true and the sidebar panel zero wide, while the tool blamed the sidebar.
+    const window = BrowserWindow.fromWebContents(lease.owner)
+    if (window !== null && window.isMinimized()) {
+      throw new Error('the application window is minimized, so nothing is being painted and there is no image to take; '
+        + 'restore the window and try again')
+    }
+    const image = await lease.guest.capturePage()
     const bytes = format === 'jpeg' ? image.toJPEG(quality ?? 90) : image.toPNG()
     if (bytes.length === 0) {
-      // Measured, not guessed: a live run read `innerWidth`/`innerHeight` of 0 from
-      // the page itself while its `visibilityState` said `visible`, and the webview
-      // element measured 0×0. The tab holding the page was not the one on screen,
-      // so there was nothing painted to take.
+      // Also measured rather than guessed: with the window shown, a page whose tab
+      // is not the selected one keeps a 0×0 view, so there is still nothing painted.
       throw new Error('the page has no painted surface to capture: its view measures 0×0, '
         + 'so the tab showing it is not the one on screen (or the sidebar is collapsed)')
     }
