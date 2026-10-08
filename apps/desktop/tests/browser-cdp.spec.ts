@@ -5,8 +5,9 @@
  * should have been accepted hangs the tool that sent it and takes the whole kernel
  * with it. That is exactly what a first event read did.
  */
-import { describe, expect, it } from 'vitest'
-import { isDesktopBrowserCommandRequest } from '../src/browser-cdp.ts'
+import { describe, expect, it, vi } from 'vitest'
+import { answerBrowserCommand, isDesktopBrowserCommandRequest } from '../src/browser-cdp.ts'
+import type { DesktopBrowserGuests } from '../src/browser-guests.ts'
 
 describe('isDesktopBrowserCommandRequest', () => {
   it('accepts a listing, a command, and an event read with or without a resume point', () => {
@@ -31,5 +32,42 @@ describe('isDesktopBrowserCommandRequest', () => {
     expect(isDesktopBrowserCommandRequest({ type: 'browser-command', requestId: 1, lease: 'l', eventsSince: 1.5 })).toBe(false)
     expect(isDesktopBrowserCommandRequest('nope')).toBe(false)
     expect(isDesktopBrowserCommandRequest(null)).toBe(false)
+  })
+})
+
+/**
+ * Which branch a request takes. A screenshot carries a lease and no method, exactly
+ * like an event read, so the order of those two tests decides whether a capture ever
+ * runs: with the event read first, every screenshot answered with an empty event log
+ * and the Host reported "the shell returned no image" — a message about an image that
+ * was never taken. Three live attempts were spent on that message.
+ */
+describe('answerBrowserCommand', () => {
+  const guests = (shot?: () => Promise<Uint8Array>): DesktopBrowserGuests => ({
+    list: () => [{ lease: 'l1', url: 'https://example.com/', title: 'Example' }],
+    events: () => ({ events: [], refused: [] }),
+    screenshot: shot ?? (() => Promise.resolve(new Uint8Array([1, 2, 3]))),
+  }) as unknown as DesktopBrowserGuests
+
+  it('captures a screenshot request instead of reading the event log', async () => {
+    const shot = vi.fn(() => Promise.resolve(new Uint8Array([137, 80, 78, 71])))
+    const sent: object[] = []
+    await answerBrowserCommand(guests(shot), {
+      type: 'browser-command', requestId: 7, lease: 'l1', screenshot: { format: 'png' },
+    }, (message) => { sent.push(message) })
+    expect(shot).toHaveBeenCalledWith('l1', 'png', undefined)
+    expect(sent).toEqual([{
+      type: 'browser-command', requestId: 7, data: Buffer.from([137, 80, 78, 71]).toString('base64'), format: 'png',
+    }])
+  })
+
+  it('still reads the event log when no screenshot was asked for', async () => {
+    const shot = vi.fn(() => Promise.resolve(new Uint8Array([1])))
+    const sent: object[] = []
+    await answerBrowserCommand(guests(shot), {
+      type: 'browser-command', requestId: 8, lease: 'l1', eventsSince: 3,
+    }, (message) => { sent.push(message) })
+    expect(shot).not.toHaveBeenCalled()
+    expect(sent).toEqual([{ type: 'browser-command', requestId: 8, events: [], refused: [] }])
   })
 })

@@ -78,16 +78,20 @@ export async function answerBrowserCommand(
       reply({ pages: guests.list() })
       return
     }
-    if (request.method === undefined) {
-      // The event log the debugger captured, resumed after what the Host saw, with
-      // the domains that refused to report so an empty list can explain itself.
-      reply({ ...guests.events(request.lease, request.eventsSince) })
-      return
-    }
+    // Screenshot first. It carries a lease and NO method, so testing for a missing
+    // method before it made every capture read the event log instead and reply with
+    // an empty one — which the Host reports as "the shell returned no image", a
+    // message about the image that was never taken.
     if (request.screenshot !== undefined) {
       const format = request.screenshot.format === 'jpeg' ? 'jpeg' : 'png'
       const image = await guests.screenshot(request.lease, format, request.screenshot.quality)
       reply({ data: Buffer.from(image).toString('base64'), format })
+      return
+    }
+    if (request.method === undefined) {
+      // The event log the debugger captured, resumed after what the Host saw, with
+      // the domains that refused to report so an empty list can explain itself.
+      reply({ ...guests.events(request.lease, request.eventsSince) })
       return
     }
     const result = await guests.command(request.lease, request.method ?? '', request.params)
