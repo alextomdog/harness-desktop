@@ -69,7 +69,14 @@ export interface EditableTextBodyProps {
   /** Whether a close was refused because this tab still holds unsaved edits. */
   readonly closePrompt?: boolean
   /** The close question's own words, translated by the caller. */
-  readonly closeLabels?: { readonly message: string; readonly discard: string; readonly cancel: string }
+  readonly closeLabels?: {
+    readonly message: string
+    readonly save: string
+    readonly discard: string
+    readonly cancel: string
+  }
+  /** Ask the dock to close this tab; sent once a save the reader asked for has landed. */
+  readonly onRequestClose?: () => void
   /** @param choice - the reader's answer about the unsaved edits. */
   readonly onResolveClose?: (choice: 'discard' | 'cancel') => void
 }
@@ -79,10 +86,15 @@ export interface EditableTextBodyProps {
  * @returns the highlighted editable surface, its save state, and the conflict's choices.
  */
 export function EditableTextBody({
-  text, version, language, save, reload, onDirty, labels, closePrompt, closeLabels, onResolveClose,
+  text, version, language, save, reload, onDirty, labels, closePrompt, closeLabels, onResolveClose, onRequestClose,
 }: EditableTextBodyProps): ReactNode {
   const [buffer, setBuffer] = useState(text)
   const [state, setState] = useState<SaveState>('clean')
+  useEffect(() => {
+    if (state !== 'saved' || !closeAfterSave.current) return
+    closeAfterSave.current = false
+    onRequestClose?.()
+  }, [state, onRequestClose])
   const [message, setMessage] = useState('')
   // What the FILE holds, as far as this editor knows: the text it was read from,
   // then whatever a save wrote. The dot is the buffer's difference from it, which
@@ -93,6 +105,9 @@ export function EditableTextBody({
   const bufferRef = useRef(buffer)
   bufferRef.current = buffer
   const basisRef = useRef(version)
+  // Set by "save and close": the save is the editor's own, and the tab goes only once that
+  // save has actually landed, never on the strength of the click alone.
+  const closeAfterSave = useRef(false)
   // Set by "keep mine": the next text to arrive is the basis for a re-save rather
   // than a version to adopt.
   const resaveRef = useRef(false)
@@ -227,6 +242,11 @@ export function EditableTextBody({
       {closePrompt === true && closeLabels !== undefined && (
         <div className={css.closePrompt} role="status" data-textpreview-close-prompt>
           <span>{closeLabels.message}</span>
+          <button
+            type="button"
+            data-textpreview-close-save
+            onClick={() => { closeAfterSave.current = true; commit() }}
+          >{closeLabels.save}</button>
           <button
             type="button"
             data-textpreview-close-discard

@@ -433,9 +433,11 @@ export function TextPreview({
             closePrompt={state?.closePrompt === true}
             closeLabels={{
               message: t('close.unsaved'),
+              save: t('close.saveAndClose'),
               discard: t('close.discardAndClose'),
               cancel: t('close.cancel'),
             }}
+            onRequestClose={() => { requestTabClose(tab.id) }}
             onResolveClose={(choice) => {
               actions.promptedClose(tab.id, false)
               if (choice !== 'discard') return
