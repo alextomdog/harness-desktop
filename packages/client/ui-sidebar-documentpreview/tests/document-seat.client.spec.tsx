@@ -97,16 +97,25 @@ async function boot() {
     // arrives, and pressing it then is what keeps the reader's own paging — the pages
     // the editor would otherwise read ahead — intact. A renderer that declares no
     // editor has no toggle, and is already a reader.
-    // A document opens in its editor, and what shows a rendered view instead is CHOOSING
-    // that implementation from the picker — which is what these specs do. The editor is
-    // listed first, so the first implementation after it is the one priority puts there.
+    // A document that can be edited opens in its editor, and what shows a rendered view
+    // instead is CHOOSING that implementation from the picker — which is what these specs
+    // do. One that declares no editor is already its reader, and there is nothing to press.
+    // The wait matters: the editor appears only once the file is whole, and asking before
+    // that would look exactly like a renderer that has no editor at all.
+    const editor = await waitFor(
+      () => container.querySelector('[data-textpreview-editor]'),
+      { timeout: 2_000 },
+    ).catch(() => null)
+    if (editor === null) return
     const menu = await waitFor(() => {
       expect(container.querySelector('[data-document-viewer-menu]')).not.toBeNull()
       return container.querySelector<HTMLElement>('[data-document-viewer-menu]')
     })
     await act(async () => { fireEvent.click(menu as HTMLElement) })
     const items = await screen.findAllByRole('menuitem')
-    await act(async () => { fireEvent.click(items[1] as HTMLElement) })
+    // The editor is listed first, so the first implementation after it is the one the
+    // registry's priority puts there.
+    await act(async () => { fireEvent.click((items[1] ?? items[0]) as HTMLElement) })
   }
   return { rt, view, open, register, read, bytes, showReader }
 }

@@ -58,8 +58,16 @@ describe('document toolbar', () => {
     await settle()
     const picker = view.queryByRole('button', { name: 'openWith' })
     expect(picker !== null).toBe(supportsText)
-    expect(h.read).not.toHaveBeenCalled()
-    expect(h.bytes).toHaveBeenCalledTimes(1)
+    // A file whose viewer is the paged text reader reads its first page; one whose viewer
+    // is a byte renderer (image, HTML, PDF, Office) reads bytes instead. Which reader was
+    // chosen is exactly what this case is about, so one of the two always happened.
+    if (supportsText) {
+      expect(h.read).toHaveBeenCalledTimes(1)
+      expect(h.bytes).not.toHaveBeenCalled()
+    } else {
+      expect(h.read).not.toHaveBeenCalled()
+      expect(h.bytes).toHaveBeenCalledTimes(1)
+    }
     if (picker !== null) {
       fireEvent.click(picker)
       expect(screen.getByRole('menuitem', { name: 'Plain text' })).toBeDefined()
@@ -69,11 +77,15 @@ describe('document toolbar', () => {
     }
   })
 
-  it('shows no implementation picker when plain text is the only viewer', async () => {
-    const h = harness({ 1: page(1, ['held'], true) })
+  it('offers the picker for a document that can be edited, with the editor among its views', async () => {
+    const h = harness({ 1: page(1, ['held'], true) }, TAB_ID, { mode: 'document' })
     const view = render(<TextPreview {...h.props()} />)
     await settle()
-    expect(view.queryByRole('button', { name: 'openWith' })).toBeNull()
+    // The editor is one of the views, so a file with a single implementation still has a
+    // picker — and that is what makes any rendered view reachable at all. Without it the
+    // editor would be a one-way door.
+    fireEvent.click(view.getByRole('button', { name: 'openWith' }))
+    expect(screen.getAllByRole('menuitem').length).toBe(2)
     expect(view.container.textContent).toContain('held')
   })
 
@@ -274,7 +286,9 @@ describe('document toolbar', () => {
   })
 
   it('dismisses the implementation picker with Escape without changing the selected implementation', async () => {
-    const h = harness({ 1: page(1, ['held'], true) })
+    // No implementation has been chosen, so none may appear to have been: the editor is
+    // what an absent choice means.
+    const h = harness({ 1: page(1, ['held'], true) }, TAB_ID, { mode: 'document' })
     const props = codeProps(h)
     const view = render(<TextPreview {...props} useDocumentPreviews={selector => selector([
       ...props.useDocumentPreviews(value => value), textBodyDefinition(() => 'viewer.text'),

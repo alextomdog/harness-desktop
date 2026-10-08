@@ -481,7 +481,9 @@ describe('TextPreview — navigation and view', () => {
   ])('retries a Markdown line navigation after switching to %s', async (_name, rendererId, expectedScrollTop) => {
     PendingIntersectionObserver.instances = []
     vi.stubGlobal('IntersectionObserver', PendingIntersectionObserver)
-    const h = harness({ 1: page(1, ['a', 'b', 'c'], true) })
+    // The document face, so the switch at the end is a real change of view rather than a
+    // second look at the one already showing.
+    const h = harness({ 1: page(1, ['a', 'b', 'c'], true) }, TAB_ID, { mode: 'document' })
     const definitions: DocumentPreviewDefinition[] = [
       { id: 'markdown', extensions: ['md'], title: () => 'Markdown', loading: 'text-pages', wrap: false },
       { id: 'code', extensions: ['md'], title: () => 'Code', loading: 'text-pages', wrap: true },
