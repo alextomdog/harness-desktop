@@ -428,6 +428,10 @@ export function TextPreview({
           // empty one, and a renderer that saves must see it as absent.
           ...current?.version === undefined ? {} : { version: current.version },
           addResource: add, setResources: set,
+          // A renderer that edits the file itself — the spreadsheet grid does — reports
+          // its state through the same store the text editor writes, so one dot serves
+          // every tab.
+          onDirty: (dirty: boolean) => { actions.dirtied(tab.id, dirty) },
         }, {
           entryKey: selected.id, hookContext: useTabInfo,
           fallback: <p className={css.statusLine}>{t('rendererUnavailable', { name: selected.title() })}</p>,

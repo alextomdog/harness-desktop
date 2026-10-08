@@ -49,6 +49,16 @@ export interface DocumentBodyOwner {
   readonly wrap: boolean
   /** Report a renderer-owned scrollport; passing `null` restores the shared body as the owner. */
   readonly scrollportRef: RefCallback<HTMLElement>
+  /**
+   * Report that this renderer holds edits the file does not, or no longer does.
+   *
+   * The dot beside a tab's title belongs to the shell, not to the renderer that edits
+   * the file — a grid, or a body with an editing model of its own. Such a body says so
+   * here and the preview draws it, the same dot a text document gets. Saving is the
+   * reader's, through `Ctrl+S`, so a body that writes back reports clean at the moment
+   * the bytes land.
+   */
+  readonly onDirty?: (dirty: boolean) => void
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

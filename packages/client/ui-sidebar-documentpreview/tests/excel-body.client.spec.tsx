@@ -7,8 +7,11 @@ import { Config } from '../src/config.ts'
 import { en, zh } from '../src/client/excel/locales.ts'
 import type { ExcelBodyProps, LoadedExcelBodyProps } from '../src/client/excel/LazyExcelBody.tsx'
 
-const mocked = vi.hoisted(() => ({ parse: vi.fn(), workbook: vi.fn((_props: unknown) => null) }))
+const mocked = vi.hoisted(() => ({ parse: vi.fn(), workbook: vi.fn((_props: unknown) => null), applyEdits: vi.fn() }))
 vi.mock('../src/client/excel/parse.ts', () => ({ parseExcel: mocked.parse }))
+// Patching a real workbook needs real bytes; these cases are about WHEN a save
+// happens, so the patch itself is stubbed.
+vi.mock('../src/client/excel/writeback.ts', () => ({ applyEdits: mocked.applyEdits }))
 vi.mock('@fortune-sheet/react', () => ({ Workbook: mocked.workbook }))
 import { ExcelBody } from '../src/client/excel/excel.tsx'
 import { LazyExcelBody } from '../src/client/excel/LazyExcelBody.tsx'
@@ -103,6 +106,60 @@ it.each(['invalid', 'tooLarge', 'timeout', 'encoding', 'unexpected'])('shows loc
   fireEvent.click(screen.getByRole('button', { name: en.retry }))
   await waitFor(() => { expect(mocked.workbook).toHaveBeenCalledOnce() })
   expect(mocked.parse).toHaveBeenCalledTimes(2)
+})
+
+/**
+ * Writing back is the READER's, not the clock's.
+ *
+ * A cell edit used to be written on a debounce, so the file and the grid agreed without
+ * anyone deciding they should — and nothing tested that it happened at all. Now an edit
+ * is the reader's until `Ctrl+S`, and until then the tab says so: the dot beside its
+ * title, reported through the same store a text document reports through.
+ */
+it('keeps an edit unsaved until Ctrl+S writes it, reporting it dirty in between', async () => {
+  mocked.parse.mockResolvedValue(value)
+  mocked.applyEdits.mockResolvedValue(new Uint8Array([9]))
+  const save = vi.fn(async (..._args: unknown[]) => ({ kind: 'saved', version: 'v2' }))
+  const onDirty = vi.fn()
+  const view = render(<ExcelBody {...loadedProps} version="v1" save={save as never} onDirty={onDirty} />)
+  await waitFor(() => { expect(mocked.workbook).toHaveBeenCalledOnce() })
+  const onChange = (mocked.workbook.mock.calls[0]![0] as { onChange: (next: unknown) => void }).onChange
+  await act(async () => {
+    onChange([{ name: 'Budget', celldata: [{ r: 0, c: 0, v: { v: 'x', m: 'x' } }] }])
+  })
+  expect(save).not.toHaveBeenCalled()
+  expect(onDirty).toHaveBeenLastCalledWith(true)
+  expect(screen.getByRole('status').textContent).toBe(en.saveHint)
+  await act(async () => {
+    fireEvent.keyDown(view.container.querySelector('[data-excel-preview]')!, { key: 's', ctrlKey: true })
+  })
+  await waitFor(() => { expect(save).toHaveBeenCalledOnce() })
+  // The save carries the version the bytes were read at, so a workbook written
+  // underneath the reader is refused rather than clobbered.
+  expect(save.mock.calls[0]![2]).toBe('v1')
+  expect(onDirty).toHaveBeenLastCalledWith(false)
+  expect(screen.getByRole('status').textContent).toBe(en.saved)
+})
+
+it('offers the choices when the file moved, and re-sends the reader grid when asked', async () => {
+  mocked.parse.mockResolvedValue(value)
+  mocked.applyEdits.mockResolvedValue(new Uint8Array([9]))
+  const save = vi.fn<(...args: unknown[]) => Promise<{ kind: string; version: string }>>()
+    .mockResolvedValueOnce({ kind: 'stale', version: 'v2' })
+    .mockResolvedValueOnce({ kind: 'saved', version: 'v3' })
+  const view = render(<ExcelBody {...loadedProps} version="v1" save={save as never} />)
+  await waitFor(() => { expect(mocked.workbook).toHaveBeenCalledOnce() })
+  const onChange = (mocked.workbook.mock.calls[0]![0] as { onChange: (next: unknown) => void }).onChange
+  await act(async () => {
+    onChange([{ name: 'Budget', celldata: [{ r: 0, c: 0, v: { v: 'x', m: 'x' } }] }])
+  })
+  await act(async () => {
+    fireEvent.keyDown(view.container.querySelector('[data-excel-preview]')!, { key: 's', ctrlKey: true })
+  })
+  await screen.findByText(en.saveStale)
+  fireEvent.click(screen.getByRole('button', { name: en.saveKeepMine }))
+  await waitFor(() => { expect(save).toHaveBeenCalledTimes(2) })
+  expect(screen.getByRole('status').textContent).toBe(en.saved)
 })
 
 it('rejects non-byte content without allocating a parser', () => {
