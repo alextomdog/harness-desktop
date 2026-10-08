@@ -7,6 +7,8 @@ import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-br
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
   shortcutsInput: 'dsh-desktop:shortcuts-input',
+  /** A passage the reader quoted out of a page in the built-in browser. */
+  quoteSelection: 'dsh-desktop:quote-selection',
   shortcutsCloseWindow: 'dsh-desktop:shortcuts-close-window',
   shortcutsGet: 'dsh-desktop:shortcuts-get',
   shortcutsEdit: 'dsh-desktop:shortcuts-edit',
@@ -72,6 +74,13 @@ export interface DesktopUpdatePresentation {
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
 export interface DshDesktopProductApi {
   readonly protocolVersion: 1
+  /**
+   * Passages the reader quoted out of a page in the built-in browser.
+   *
+   * The selection belongs to the guest, so only the shell can read it; this is how what it
+   * read reaches the composer, where the same insertion path as the other two cases runs.
+   */
+  readonly quotes: { subscribe(listener: (text: string) => void): () => void }
   readonly browser: DesktopBrowserBridge
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi

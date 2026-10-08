@@ -119,6 +119,18 @@ export function installQuoteShortcut(ctx: Context): void {
   //
   // Capture phase, so the editor's own key handling never sees the key: a quote is not a
   // space the reader meant to type.
+  ctx.effect(() => {
+    // A page's selection belongs to the page, so the shell reads it and hands it over; the
+    // insertion is the same call the editor's and the conversation's selections already make.
+    const products = (globalThis as {
+      dshDesktop?: { quotes?: { subscribe: (listener: (text: string) => void) => () => void } }
+    }).dshDesktop
+    const unsubscribe = products?.quotes?.subscribe((text: string) => {
+      if (text.trim() !== '') quoteInto(text)
+    })
+    return () => { unsubscribe?.() }
+  }, 'ui-sidebar-documentpreview: quoted page selections')
+
   // Through `effect`, so the listener is taken back when the plugin is: a key handler that
   // outlives its plugin keeps answering presses with a context that is gone.
   ctx.effect(() => {

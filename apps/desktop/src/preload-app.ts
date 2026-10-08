@@ -14,6 +14,13 @@ function createProductApi(): DshDesktopProductApi {
   return {
     protocolVersion: 1,
     browser: createDesktopBrowserBridge(),
+    quotes: {
+      subscribe(listener) {
+        const handle = (_event: Electron.IpcRendererEvent, text: string): void => { listener(text) }
+        ipcRenderer.on(DESKTOP_IPC.quoteSelection, handle)
+        return () => { ipcRenderer.off(DESKTOP_IPC.quoteSelection, handle) }
+      },
+    },
     deviceInfo: () => ipcRenderer.invoke(DESKTOP_IPC.deviceInfo) as Promise<string>,
     keyboard: {
       closeWindow: revision => ipcRenderer.invoke(DESKTOP_IPC.shortcutsCloseWindow, revision) as Promise<void>,
