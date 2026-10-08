@@ -10,6 +10,7 @@
  * the path row; the Sidebar's strip carries none of them.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { requestTabClose } from './close-request.ts'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
@@ -437,7 +438,11 @@ export function TextPreview({
             }}
             onResolveClose={(choice) => {
               actions.promptedClose(tab.id, false)
-              if (choice === 'discard') actions.dirtied(tab.id, false)
+              if (choice !== 'discard') return
+              // The edits are given up, so the tab may go — and it goes now, because the
+              // reader already said what they wanted to happen to it.
+              actions.dirtied(tab.id, false)
+              requestTabClose(tab.id)
             }}
             save={(value, expectedVersion, signal) => save(file, value, expectedVersion, signal)}
             labels={{

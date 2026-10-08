@@ -29,6 +29,7 @@ import { createReadPage, createWriteFile } from './rpc.ts'
 import { createTextStore } from './store.ts'
 import { en, zh } from './locales.ts'
 import { installQuoteShortcut } from './quote-selection.ts'
+import { setTabClose } from './close-request.ts'
 import { DocumentPreviewRegistry } from './document/registry.ts'
 import { documentTabInfoFactory } from './document/contract.ts'
 import { apply as registerText } from './text/index.ts'
@@ -105,6 +106,9 @@ export function apply(ctx: ClientContext): void {
       instance.actions.promptedClose(tab.id, true)
       return false
     }), 'ui-sidebar-documentpreview: unsaved close guard')
+    // The body answers the close question itself, so it needs the dock's own close: this is
+    // the one reference across that line, and it is removed with the scope that set it.
+    scope.effect(() => setTabClose((tabId) => { scope.sidebarRight.close(tabId as never) }), 'ui-sidebar-documentpreview: tab close')
   })
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar-documentpreview: dictionaries')
   installQuoteShortcut(ctx)
