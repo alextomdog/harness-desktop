@@ -94,6 +94,9 @@ function currentSession(ctx: Context): string | undefined {
 }
 
 export function installQuoteShortcut(ctx: Context): void {
+  // Nothing to capture where there is no window: the plugin must still register its types in
+  // a non-DOM environment (and in the specs that mount it with a partial context).
+  if (typeof window === 'undefined') return
   // Captured at the page rather than registered as a command, for two reasons that are both
   // about the gesture being what it is. Shift+Space is a TYPING key with a modifier, and the
   // command registry binds letters — a Space binding is never matched, which is how this
@@ -103,16 +106,22 @@ export function installQuoteShortcut(ctx: Context): void {
   //
   // Capture phase, so the editor's own key handling never sees the key: a quote is not a
   // space the reader meant to type.
-  window.addEventListener('keydown', (event) => {
-    const isSpace = event.code === 'Space' || event.key === ' '
-    if (!event.shiftKey || !isSpace) return
-    if (event.altKey || event.ctrlKey || event.metaKey) return
-    const quote = selectedText().trim()
-    if (quote === '') return
-    const sessionId = currentSession(ctx)
-    if (sessionId === undefined) return
-    event.preventDefault()
-    event.stopPropagation()
-    quoteInto(quote)
-  }, { capture: true })
+  // Through `effect`, so the listener is taken back when the plugin is: a key handler that
+  // outlives its plugin keeps answering presses with a context that is gone.
+  ctx.effect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const isSpace = event.code === 'Space' || event.key === ' '
+      if (!event.shiftKey || !isSpace) return
+      if (event.altKey || event.ctrlKey || event.metaKey) return
+      const quote = selectedText().trim()
+      if (quote === '') return
+      const sessionId = currentSession(ctx)
+      if (sessionId === undefined) return
+      event.preventDefault()
+      event.stopPropagation()
+      quoteInto(quote)
+    }
+    window.addEventListener('keydown', onKeyDown, { capture: true })
+    return () => { window.removeEventListener('keydown', onKeyDown, { capture: true }) }
+  }, 'ui-sidebar-documentpreview: quote selection')
 }
