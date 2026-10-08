@@ -165,6 +165,10 @@ export const browserToolsPlugin = {
  * @param control - the shell bridge.
  */
 function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): void {
+  // Request breakpoints this Host has set, per page. The protocol has no "list
+  // breakpoints" call, so what a page was asked to break on is remembered here — and
+  // forgotten with the registration, which is the same lifetime as the bridge.
+  const xhrBreakpoints = new Map<string, Set<string>>()
   ctx.tools.register(defineTool({
     name: 'select_page',
     description: 'List the pages the built-in browser (the right sidebar) has open, or pick one for later calls. '
@@ -267,10 +271,15 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
   ctx.tools.register(defineTool({
     name: 'evaluate_script',
     description: 'Evaluate one JavaScript function in a page of the built-in browser and return its value. '
-      + 'Pass a function expression, for example "() => document.title".',
+      + 'Pass a function expression, for example "() => document.title". While the page is paused, pass '
+      + 'callFrameIndex to evaluate inside that frame, reading its arguments and locals.',
     parameters: {
       function: { type: 'string', required: true, description: 'JavaScript function expression to evaluate.' },
       pageIdx: { type: 'number', description: 'Page to evaluate in, as select_page lists it. Defaults to the only page.' },
+      callFrameIndex: {
+        type: 'number',
+        description: 'Frame to evaluate in, as get_paused_info lists them. Only while the page is paused.',
+      },
     },
     output: {
       schema: {
@@ -282,17 +291,250 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
     async execute(args) {
       const { page } = await resolveTarget(control, args.pageIdx)
       if (page === undefined) throw new Error('no page to evaluate in')
-      const evaluation = await control.command(page.lease, 'Runtime.evaluate', {
-        expression: `(${args.function})()`,
-        awaitPromise: true,
-        returnByValue: true,
-      }) as RuntimeEvaluation
+      const expression = `(${args.function})()`
+      // A paused page cannot answer `Runtime.evaluate` at all: it is stopped, and the
+      // call would sit there until the tool's deadline. Asking the frame is the only way
+      // to read a local, and it is what the caller asked for by naming one.
+      const evaluation = args.callFrameIndex === undefined
+        ? await control.command(page.lease, 'Runtime.evaluate', {
+          expression, awaitPromise: true, returnByValue: true,
+        }) as RuntimeEvaluation
+        : await evaluateInFrame(control, page.lease, expression, args.callFrameIndex)
       if (evaluation.exceptionDetails !== undefined) {
         throw new Error(evaluation.exceptionDetails.exception?.description
           ?? evaluation.exceptionDetails.text ?? 'the page threw while evaluating')
       }
       const value = evaluation.result?.value
       return { value: typeof value === 'string' ? value : JSON.stringify(value ?? evaluation.result?.description ?? null) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'break_on_xhr',
+    description: 'Pause a page of the built-in browser when it sends a request whose URL contains this text. '
+      + 'The page stops at the request, and get_paused_info reports where.',
+    parameters: {
+      url: { type: 'string', required: true, description: 'URL substring to pause on.' },
+      pageIdx: { type: 'number', description: 'Page to break in, as select_page lists it. Defaults to the only page.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: { url: { type: 'string', required: true }, breakpoints: { type: 'array', required: true, items: { type: 'string' } } },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Breaking on requests containing ${value.url}. Breakpoints: ${value.breakpoints.join(', ') || 'none'}`,
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to break in')
+      await control.command(page.lease, 'DOMDebugger.setXHRBreakpoint', { url: args.url })
+      const set = xhrBreakpoints.get(page.lease) ?? new Set<string>()
+      set.add(args.url)
+      xhrBreakpoints.set(page.lease, set)
+      return { url: args.url, breakpoints: [...set] }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'list_breakpoints',
+    description: 'List the request breakpoints set on a page of the built-in browser by break_on_xhr.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to read, as select_page lists it. Defaults to the only page.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: { urls: { type: 'array', required: true, items: { type: 'string' } } },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.urls.length === 0 ? 'No request breakpoints set.' : value.urls.join('\n'),
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to read')
+      return { urls: [...xhrBreakpoints.get(page.lease) ?? []] }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'remove_breakpoint',
+    description: 'Remove one request breakpoint set by break_on_xhr, or every one of them with all: true.',
+    parameters: {
+      url: { type: 'string', description: 'URL substring the breakpoint was set with.' },
+      all: { type: 'boolean', description: 'Remove every request breakpoint on the page.' },
+      pageIdx: { type: 'number', description: 'Page to change, as select_page lists it. Defaults to the only page.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: { removed: { type: 'array', required: true, items: { type: 'string' } } },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.removed.length === 0 ? 'Nothing was removed.' : `Removed ${value.removed.join(', ')}`,
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to change')
+      const set = xhrBreakpoints.get(page.lease) ?? new Set<string>()
+      const removed = args.all === true ? [...set] : args.url === undefined ? [] : [args.url]
+      if (removed.length === 0) throw new Error('name a url, or pass all: true')
+      for (const url of removed) {
+        await control.command(page.lease, 'DOMDebugger.removeXHRBreakpoint', { url })
+        set.delete(url)
+      }
+      return { removed }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'get_paused_info',
+    description: 'Report where a page of the built-in browser is paused, with its call frames and the breakpoints it '
+      + 'hit, or that it is running. While a page is paused, only the tools that resume or step it can move it.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to read, as select_page lists it. Defaults to the only page.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          paused: { type: 'boolean', required: true },
+          reason: { type: 'string', required: true },
+          frames: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                index: { type: 'number', required: true },
+                functionName: { type: 'string', required: true },
+                url: { type: 'string', required: true },
+                line: { type: 'number', required: true },
+                column: { type: 'number', required: true },
+              },
+            },
+          },
+          hitBreakpoints: { type: 'array', required: true, items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.paused
+          ? `Paused (${value.reason}) at\n${value.frames.map(frame =>
+            `${String(frame.index)}: ${frame.functionName || '(anonymous)'} ${frame.url}:${String(frame.line)}:${String(frame.column)}`).join('\n')}`
+            + `${value.hitBreakpoints.length === 0 ? '' : `\nHit: ${value.hitBreakpoints.join(', ')}`}`
+          : 'The page is running.',
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to read')
+      const paused = pausedStateOf((await control.events(page.lease)).events)
+      if (paused === undefined) {
+        return { paused: false, reason: '', frames: [], hitBreakpoints: [] }
+      }
+      return {
+        paused: true,
+        reason: paused.reason,
+        frames: paused.callFrames.map((frame, index) => ({
+          index,
+          functionName: frame.functionName ?? '',
+          url: frame.url ?? '',
+          // The protocol counts from 0; a caller reads a line as an editor shows it.
+          line: (frame.location?.lineNumber ?? 0) + 1,
+          column: (frame.location?.columnNumber ?? 0) + 1,
+        })),
+        hitBreakpoints: [...paused.hitBreakpoints],
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'pause_or_resume',
+    description: 'Pause a page of the built-in browser now, or let a paused one continue.',
+    parameters: {
+      action: { type: 'string', required: true, enum: ['pause', 'resume'], description: 'What to do to the page.' },
+      pageIdx: { type: 'number', description: 'Page to act on, as select_page lists it. Defaults to the only page.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: { paused: { type: 'boolean', required: true }, reason: { type: 'string', required: true } },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.paused ? `Paused (${value.reason || 'pause requested'}).` : 'The page is running.',
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to act on')
+      if (args.action === 'pause') {
+        await control.command(page.lease, 'Debugger.pause')
+        // The pause arrives as an event, so the state is only true once one has landed.
+        const paused = await waitForPause(control, page.lease, undefined)
+        return { paused: paused !== undefined, reason: paused?.reason ?? '' }
+      }
+      await control.command(page.lease, 'Debugger.resume')
+      const cleared = await waitForRunning(control, page.lease)
+      return { paused: !cleared, reason: '' }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'step',
+    description: 'Advance a paused page of the built-in browser by one statement, and report where it stopped next.',
+    parameters: {
+      direction: {
+        type: 'string', required: true, enum: ['over', 'into', 'out'],
+        description: 'over for the next statement, into to follow a call, out to finish the current function.',
+      },
+      pageIdx: { type: 'number', description: 'Page to step, as select_page lists it. Defaults to the only page.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          paused: { type: 'boolean', required: true },
+          reason: { type: 'string', required: true },
+          functionName: { type: 'string', required: true },
+          url: { type: 'string', required: true },
+          line: { type: 'number', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.paused
+          ? `Paused (${value.reason}) in ${value.functionName || '(anonymous)'} ${value.url}:${String(value.line)}`
+          : 'The page is running.',
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to step')
+      const before = pausedStateOf((await control.events(page.lease)).events)
+      if (before === undefined) throw new Error('the page is not paused: pause it or set a breakpoint first')
+      const method = args.direction === 'into'
+        ? 'Debugger.stepInto'
+        : args.direction === 'out' ? 'Debugger.stepOut' : 'Debugger.stepOver'
+      await control.command(page.lease, method)
+      // A step answers at once and pauses again as an event, so the new stop is waited
+      // for: reporting the frame the caller just left would be worse than waiting.
+      const paused = await waitForPause(control, page.lease, before.sequence)
+      if (paused === undefined) return { paused: false, reason: '', functionName: '', url: '', line: 0 }
+      const frame = paused.callFrames[0]
+      return {
+        paused: true,
+        reason: paused.reason,
+        functionName: frame?.functionName ?? '',
+        url: frame?.url ?? '',
+        line: (frame?.location?.lineNumber ?? 0) + 1,
+      }
     },
   }))
 
@@ -835,6 +1077,117 @@ function requireDomains(capture: DesktopBrowserCapture, domains: readonly string
       throw new Error(`this page refused to report ${domain.replace('.enable', '')}: ${refusal.reason}`)
     }
   }
+}
+
+/** One call frame of a paused page, as far as these tools read it. */
+interface PausedFrame {
+  readonly functionName?: string
+  readonly url?: string
+  readonly location?: { readonly lineNumber?: number; readonly columnNumber?: number }
+  readonly callFrameId?: string
+}
+
+/** Where a page stopped, and how far into its life that happened. */
+export interface PausedState {
+  /** The event sequence the pause arrived at, so a later stop is told from it. */
+  readonly sequence: number
+  readonly reason: string
+  readonly callFrames: readonly PausedFrame[]
+  readonly hitBreakpoints: readonly string[]
+}
+
+/**
+ * Whether the page is paused, replayed from what capture holds.
+ *
+ * A pause and its resume are both events, so the state is whichever came last. Replaying
+ * is also the only way to ask: a stopped page cannot answer `Runtime.evaluate`, which is
+ * why the pause family is built on the log rather than on a query.
+ * @param events - the page's captured events.
+ * @returns the current stop, or undefined when the page is running.
+ */
+export function pausedStateOf(events: readonly DesktopBrowserEvent[]): PausedState | undefined {
+  let paused: PausedState | undefined
+  for (const event of events) {
+    if (event.method === 'Debugger.paused') {
+      const params = event.params as {
+        reason?: string
+        callFrames?: readonly PausedFrame[]
+        hitBreakpoints?: readonly string[]
+      }
+      paused = {
+        sequence: event.seq,
+        reason: params.reason ?? '',
+        callFrames: params.callFrames ?? [],
+        hitBreakpoints: params.hitBreakpoints ?? [],
+      }
+    } else if (event.method === 'Debugger.resumed') {
+      paused = undefined
+    }
+  }
+  return paused
+}
+
+/** How long a stop is waited for after asking for one. */
+const PAUSE_DEADLINE_MS = 5_000
+const PAUSE_POLL_MS = 60
+
+/**
+ * Wait for the page to be paused at a stop later than one already seen.
+ * @param control - the bridge.
+ * @param lease - the page.
+ * @param since - the sequence of the stop already seen, or undefined for any stop.
+ * @returns the stop, or undefined when none arrived in time.
+ */
+async function waitForPause(
+  control: DesktopBrowserControl, lease: string, since: number | undefined,
+): Promise<PausedState | undefined> {
+  const deadline = Date.now() + PAUSE_DEADLINE_MS
+  while (Date.now() < deadline) {
+    const paused = pausedStateOf((await control.events(lease)).events)
+    if (paused !== undefined && (since === undefined || paused.sequence > since)) return paused
+    await new Promise(resolve => setTimeout(resolve, PAUSE_POLL_MS))
+  }
+  return undefined
+}
+
+/**
+ * Wait for a resumed page to report itself running.
+ * @param control - the bridge.
+ * @param lease - the page.
+ * @returns true when it is running, false when the deadline passed first.
+ */
+async function waitForRunning(control: DesktopBrowserControl, lease: string): Promise<boolean> {
+  const deadline = Date.now() + PAUSE_DEADLINE_MS
+  while (Date.now() < deadline) {
+    if (pausedStateOf((await control.events(lease)).events) === undefined) return true
+    await new Promise(resolve => setTimeout(resolve, PAUSE_POLL_MS))
+  }
+  return false
+}
+
+/**
+ * Evaluate an expression inside one call frame of a paused page.
+ * @param control - the bridge.
+ * @param lease - the page.
+ * @param expression - the expression to evaluate.
+ * @param index - the frame, as `get_paused_info` lists it.
+ * @returns the evaluation, in the shape the callers already read.
+ * @throws when the page is not paused, or has no frame at that index.
+ */
+async function evaluateInFrame(
+  control: DesktopBrowserControl, lease: string, expression: string, index: number,
+): Promise<RuntimeEvaluation> {
+  const paused = pausedStateOf((await control.events(lease)).events)
+  if (paused === undefined) throw new Error('the page is not paused: callFrameIndex needs a stopped frame')
+  const frame = paused.callFrames[index]
+  if (frame?.callFrameId === undefined) {
+    throw new Error(`no call frame at index ${String(index)}: get_paused_info lists ${String(paused.callFrames.length)}`)
+  }
+  return await control.command(lease, 'Debugger.evaluateOnCallFrame', {
+    callFrameId: frame.callFrameId,
+    expression,
+    returnByValue: true,
+  }) as RuntimeEvaluation
 }
 
 /** How many entries a listing returns when the caller names no size. */
