@@ -28,6 +28,7 @@ import { textFace } from './face.ts'
 import { createReadPage, createWriteFile } from './rpc.ts'
 import { createTextStore } from './store.ts'
 import { en, zh } from './locales.ts'
+import { installQuoteShortcut } from './quote-selection.ts'
 import { DocumentPreviewRegistry } from './document/registry.ts'
 import { documentTabInfoFactory } from './document/contract.ts'
 import { apply as registerText } from './text/index.ts'
@@ -92,6 +93,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => disposePreviews)
   ctx.effect(() => ctx.sidebarRightTabs.register(textDefinition()), 'ui-sidebar-documentpreview: text type')
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar-documentpreview: dictionaries')
+  installQuoteShortcut(ctx)
 
   const store = createTextStore()
   const face = textFace(

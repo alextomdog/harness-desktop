@@ -43,6 +43,9 @@ export const zh = {
   'edit.preview': '预览',
   'edit.hint': 'Ctrl + S 保存',
   'edit.dirty': '有未保存的修改',
+  'quote.label': '引用选中内容',
+  'quote.noSession': '没有可引用的会话',
+  'quote.noSelection': '先选中一段文字',
 } satisfies Record<string, string>
 
 /** Text-preview dictionary key union. */
@@ -85,4 +88,7 @@ export const en = {
   'edit.preview': 'Preview',
   'edit.hint': 'Ctrl + S to save',
   'edit.dirty': 'Unsaved changes',
+  'quote.label': 'Quote selection',
+  'quote.noSession': 'No conversation to quote into',
+  'quote.noSelection': 'Select some text first',
 } satisfies Record<SidebarDocumentPreviewKey, string>
