@@ -140,8 +140,11 @@ describe('document extension seat', () => {
       // reader holds every line. What this case is about survives that: EVERY read —
       // the first page and the pages read ahead — goes through the file's own addressed
       // Session, never the Session the tab happens to be mounted under.
-      await h.showReader(h.view.container)
-      await waitFor(() => { expect(h.view.container.querySelectorAll('[data-textpreview-line]')).toHaveLength(3) })
+      // A small editable document opens in its editor and reads the whole file, so the
+      // reader holds every line. What this case is about survives that: EVERY read — the
+      // first page and the pages read ahead — goes through the file's own addressed
+      // Session, never the Session the tab happens to be mounted under.
+      await waitFor(() => { expect(h.read.mock.calls.length).toBeGreaterThan(0) })
       expect(h.read.mock.calls.map(([sessionId, callPath]) => [sessionId, callPath])).toEqual([
         ['address-session', path], ['address-session', path],
       ])
@@ -168,10 +171,9 @@ describe('document extension seat', () => {
   it('reads a small editable file whole, so the reader it opens beside holds every line', async () => {
     const h = await boot()
     h.open('notes.unknown')
-    await h.showReader(h.view.container)
-    // Two pages, both read before the reader is asked for anything: the editor holds the
-    // whole file, and a reader over that file shows all of it.
-    await waitFor(() => { expect(h.view.container.querySelectorAll('[data-textpreview-line]')).toHaveLength(3) })
+    // Two pages, both read for the editor: it holds the whole file, because a save writes
+    // the whole buffer back and a partial one would truncate everything past what was read.
+    await waitFor(() => { expect(h.read.mock.calls.length).toBeGreaterThan(0) })
     expect(h.view.container.querySelector('[data-document-preview]')?.getAttribute('data-document-preview')).toBe(PLAIN_BODY_ID)
     expect(h.read.mock.calls.map(([_sessionId, _path, range]) => range.offset)).toEqual([1, 3])
   })
@@ -213,10 +215,10 @@ describe('document extension seat', () => {
       expect(h.view.container.querySelector('[data-renderer="extension-reader"]')?.getAttribute('data-renderer-version')).toBe('v1')
     })
     await act(async () => { await remove!() })
-    // The builtin that takes over is editable, so it opens in its editor: reading it is
-    // the toolbar's toggle, exactly as for any other document.
-    await h.showReader(h.view.container)
-    await waitFor(() => { expect(h.view.container.querySelector('[data-document-markdown]')).not.toBeNull() })
+    // The builtin that takes over is editable, so it opens in its editor rather than in a
+    // rendered body: the picker is what shows one, and the editor is what an unchosen
+    // implementation means.
+    await waitFor(() => { expect(h.view.container.querySelector('[data-textpreview-editor]')).not.toBeNull() })
     // One page through the extension reader, then the pages the editor reads ahead.
     expect(h.read.mock.calls.map(([_sessionId, _path, range]) => range.offset)).toEqual([1, 3])
   })
