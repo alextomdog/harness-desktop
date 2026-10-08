@@ -56,6 +56,52 @@ function describe(page: DesktopBrowserPage, index: number): { pageIdx: number; u
   return { pageIdx: index, url: page.url, title: page.title }
 }
 
+/** One captured page: the bytes, and whose they are. */
+export interface CapturedPage {
+  /** The page that produced the image. */
+  readonly page: DesktopBrowserPage
+  /** Its position within the candidate list that was offered. */
+  readonly pageIdx: number
+  /** The image bytes. */
+  readonly image: Uint8Array
+}
+
+/**
+ * Capture the first page that can actually be painted.
+ *
+ * A page whose tab is retained but not on screen keeps a 0×0 view and yields nothing.
+ * That is a property of the layout, not of the page, and it is why a screenshot asked
+ * for without naming a page must not simply take the first one: the first entry is
+ * the OLDEST page, which is usually a tab that is not on screen at all. Naming no
+ * page means "the browser area the user is looking at", so candidates are tried in
+ * order and the first real image wins. Naming one keeps the strict reading: that
+ * page, or a refusal that says why it could not be taken.
+ * @param control - the bridge.
+ * @param pages - the candidate pages, in the order `select_page` lists them.
+ * @param format - `png`, or `jpeg` at the given quality.
+ * @param quality - JPEG quality 0-100; ignored for png.
+ * @returns the captured page and its bytes.
+ * @throws with the last refusal when no candidate could be captured.
+ */
+export async function capturePainted(
+  control: DesktopBrowserControl,
+  pages: readonly DesktopBrowserPage[],
+  format: 'png' | 'jpeg',
+  quality: number | undefined,
+): Promise<CapturedPage> {
+  let refusal: string | undefined
+  for (const [pageIdx, page] of pages.entries()) {
+    try {
+      const image = await control.screenshot(page.lease, format, quality)
+      if (image.length > 0) return { page, pageIdx, image }
+      refusal = 'the page produced an empty image'
+    } catch (error: unknown) {
+      refusal = error instanceof Error ? error.message : String(error)
+    }
+  }
+  throw new Error(refusal ?? 'no page to capture')
+}
+
 /** The `Runtime.evaluate` result, as far as these tools read it. */
 interface RuntimeEvaluation {
   readonly result?: { readonly value?: unknown; readonly description?: string }
@@ -253,9 +299,10 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
   ctx.tools.register(defineTool({
     name: 'take_screenshot',
     description: 'Capture a page of the built-in browser as an image, save it to a file, and return the path. '
-      + 'Read the file back with read_image to look at it. Captures the visible viewport.',
+      + 'Read the file back with read_image to look at it. Without pageIdx it captures the browser area that is '
+      + 'on screen, which is what visual verification wants; with pageIdx it captures exactly that page.',
     parameters: {
-      pageIdx: { type: 'number', description: 'Page to capture, as select_page lists it. Defaults to the only page.' },
+      pageIdx: { type: 'number', description: 'Page to capture, as select_page lists it. Defaults to the page on screen.' },
       format: { type: 'string', enum: ['png', 'jpeg'], description: 'Image format. Defaults to png.' },
       quality: { type: 'number', description: 'JPEG quality 0-100. Ignored for png.' },
       filePath: { type: 'string', description: 'Where to write the image. Defaults to a temporary file.' },
@@ -266,25 +313,39 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
         properties: {
           path: { type: 'string', required: true },
           bytes: { type: 'number', required: true },
+          url: { type: 'string', required: true },
+          pageIdx: { type: 'number', required: true },
         },
       },
       render: (_args, value) => [{
         type: 'text',
-        text: `Saved a ${String(value.bytes)}-byte screenshot to ${value.path}. Read it with read_image.`,
+        text: `Saved a ${String(value.bytes)}-byte screenshot of ${value.url} (pageIdx ${String(value.pageIdx)}) to `
+          + `${value.path}. Read it with read_image.`,
       }],
     },
     async execute(args) {
-      const { page } = await resolveTarget(control, args.pageIdx)
-      if (page === undefined) throw new Error('no page to capture')
       const format = args.format ?? 'png'
-      // Electron captures a guest; the protocol's own screenshot does not answer
-      // for one, which three live attempts reported as a shell that never replied.
-      const image = await control.screenshot(page.lease, format === 'jpeg' ? 'jpeg' : 'png', args.quality)
-      const bytes = Buffer.from(image)
-      const path = args.filePath ?? join(tmpdir(), `dsh-browser-${String(Date.now())}.${format === 'jpeg' ? 'jpg' : 'png'}`)
+      const encoded = format === 'jpeg' ? 'jpeg' : 'png'
+      const pages = await control.list()
+      if (pages.length === 0) {
+        throw new Error('no page is open in the built-in browser: open one in the right sidebar first')
+      }
+      const candidates = args.pageIdx === undefined ? pages : pages.slice(args.pageIdx, args.pageIdx + 1)
+      if (candidates.length === 0) {
+        throw new Error(`no page at pageIdx ${String(args.pageIdx)}: ${String(pages.length)} are open`)
+      }
+      // Electron captures a guest; the protocol's own screenshot does not answer for
+      // one, which three live attempts reported as a shell that never replied.
+      const captured = await capturePainted(control, candidates, encoded, args.quality)
+      const path = args.filePath ?? join(tmpdir(), `dsh-browser-${String(Date.now())}.${encoded === 'jpeg' ? 'jpg' : 'png'}`)
       const target = await ctx.fs.resolve(path)
-      await ctx.fs.writeBytes(target, image)
-      return { path, bytes: bytes.length }
+      await ctx.fs.writeBytes(target, captured.image)
+      return {
+        path,
+        bytes: captured.image.length,
+        url: captured.page.url,
+        pageIdx: args.pageIdx ?? captured.pageIdx,
+      }
     },
   }))
 
