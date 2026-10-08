@@ -704,8 +704,66 @@ describe('explicit tab resource cleanup', () => {
     }
   })
 
-  it('does not invoke cleanup on collapse or when revealing the same tab', () => {
-    const h = harness()
+  describe('a tab kind refusing to close its own tab', () => {
+  /** The scene every case here needs: one live tab of kind `text`. */
+    function opened() {
+      const h = harness()
+      const release = h.adopt(SESSION, h.instance)
+      const unbind = h.publish()
+      h.controller.openResource('dsh-resource://file/session/s-test/terminal')
+      return { h, tabId: h.tabOf('terminal'), release, unbind }
+    }
+
+    it('keeps the tab open, and closes nothing else on the way', () => {
+      const { h, tabId, release, unbind } = opened()
+      const guard = vi.fn(() => false)
+      const unregister = h.controller.registerCloseGuard('text', guard)
+      try {
+        const before = h.entries()
+        h.controller.close(tabId)
+        // Asked with the tab about to go, and its refusal leaves the dock exactly as it was:
+        // a type that owns unsaved work is the reason this question exists.
+        expect(guard).toHaveBeenCalledExactlyOnceWith(SESSION, h.layout().tabs[tabId])
+        expect(h.layout().tabs[tabId]).toBeDefined()
+        expect(h.entries()).toBe(before)
+      } finally {
+        unregister()
+        unbind()
+        release()
+      }
+    })
+
+    it('closes the tab once the guard stops refusing', () => {
+      const { h, tabId, release, unbind } = opened()
+      const unregister = h.controller.registerCloseGuard('text', () => false)
+      try {
+        h.controller.close(tabId)
+        expect(h.layout().tabs[tabId]).toBeDefined()
+        unregister()
+        h.controller.close(tabId)
+        expect(h.layout().tabs[tabId]).toBeUndefined()
+      } finally {
+        unbind()
+        release()
+      }
+    })
+
+    it('closes as before when the guard allows it, and rejects a second guard for one kind', () => {
+      const { h, tabId, release, unbind } = opened()
+      const unregister = h.controller.registerCloseGuard('text', () => true)
+      try {
+        expect(() => h.controller.registerCloseGuard('text', () => true)).toThrow('already registered')
+        h.controller.close(tabId)
+        expect(h.layout().tabs[tabId]).toBeUndefined()
+      } finally {
+        unregister()
+        unbind()
+        release()
+      }
+    })
+  })
+
+  it('does not invoke cleanup on collapse or when revealing the same tab', () => {    const h = harness()
     h.adopt(SESSION, h.instance)
     h.publish()
     const address = 'dsh-resource://file/session/s-test/terminal'
