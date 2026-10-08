@@ -80,6 +80,12 @@ export interface DesktopBrowserControl {
    */
   clearEvents(lease: string): Promise<number>
   /**
+   * Clear one page's site data, and optionally its caches.
+   * @param lease - the page.
+   * @param browserCache - whether to drop the HTTP cache and cached host lookups too.
+   */
+  clearSiteData(lease: string, browserCache: boolean): Promise<void>
+  /**
    * Route one message from the shell.
    * @param message - the message, as received.
    * @returns whether this bridge consumed it.
@@ -159,6 +165,10 @@ export function installDesktopBrowserControl(deadlineMs = BROWSER_COMMAND_DEADLI
       const reply = await ask({ lease, clear: 'events' })
       if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
       return typeof reply.removed === 'number' ? reply.removed : 0
+    },
+    async clearSiteData(lease, browserCache): Promise<void> {
+      const reply = await ask({ lease, clearSiteData: { browserCache } })
+      if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
     },
     handle(message: unknown): boolean {
       if (typeof message !== 'object' || message === null) return false

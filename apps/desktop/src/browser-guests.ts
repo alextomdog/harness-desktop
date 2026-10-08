@@ -303,6 +303,31 @@ export class DesktopBrowserGuests {
   }
 
   /**
+   * Clear what one page's origin keeps, and optionally what it cached.
+   *
+   * Everything here is scoped to the guest's own partition, which the sidebar created
+   * for this workspace: an agent resetting a site must not touch another origin, another
+   * window, or the signed-in application around it. `sessionStorage` is not part of the
+   * storage-data clear, so it is cleared in the page itself; the page is deliberately
+   * NOT reloaded, because a caller may be building state it wants to keep looking at.
+   * @param leaseId - the lease received from the Host.
+   * @param browserCache - whether to drop the HTTP cache and cached host lookups too.
+   */
+  async clearSiteData(leaseId: string, browserCache: boolean): Promise<void> {
+    const lease = this.leases.get(leaseId as DesktopBrowserLeaseId)
+    if (lease?.guest === undefined || lease.guest.isDestroyed()) {
+      throw new Error('desktop browser: no live guest holds that lease')
+    }
+    const guestSession = session.fromPartition(lease.partition)
+    await guestSession.clearStorageData()
+    if (browserCache) {
+      await guestSession.clearCache()
+      await guestSession.clearHostResolverCache()
+    }
+    await lease.guest.executeJavaScript('try { sessionStorage.clear() } catch {}', true).catch(() => undefined)
+  }
+
+  /**
    * Discard what capture holds for one page.
    *
    * The sequence keeps counting, so a caller that was reading from a point still gets

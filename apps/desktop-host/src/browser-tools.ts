@@ -613,6 +613,39 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
   }))
 
   ctx.tools.register(defineTool({
+    name: 'clear_site_data',
+    description: 'Clear the cookies and storage a page of the built-in browser keeps, and optionally its caches. '
+      + 'Irreversible, and the page is NOT reloaded, so what it holds in memory stays until it navigates. '
+      + 'Only this sidebar browser is affected, and only the workspace partition behind it.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to clear, as select_page lists it. Defaults to the only page.' },
+      browserCache: { type: 'boolean', description: 'Also drop the HTTP cache and cached host lookups.' },
+      confirm: { type: 'boolean', required: true, description: 'Must be true to authorize clearing site data.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          url: { type: 'string', required: true },
+          browserCache: { type: 'boolean', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Cleared cookies and storage for ${value.url}`
+          + `${value.browserCache ? ', plus the HTTP and host-lookup caches' : ''}. The page was not reloaded.`,
+      }],
+    },
+    async execute(args) {
+      if (args.confirm !== true) throw new Error('clearing site data is irreversible: pass confirm: true')
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to clear')
+      await control.clearSiteData(page.lease, args.browserCache === true)
+      return { url: page.url, browserCache: args.browserCache === true }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'new_page',
     description: 'Open a new page in the built-in browser and return it, so it can be driven. '
       + 'Use this when no page is open, or to visit another address beside the one already showing.',

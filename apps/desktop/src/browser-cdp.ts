@@ -38,6 +38,11 @@ export interface DesktopBrowserCommandRequest {
    * window, and the events already held are the ones it does not want to read past.
    */
   readonly clear?: 'events'
+  /**
+   * Clear this page's site data. Present means "reset what the origin keeps"; the
+   * optional flag adds the caches, and the page is not reloaded either way.
+   */
+  readonly clearSiteData?: { readonly browserCache?: boolean }
 }
 
 /** Whether a message from the Host is a browser-bridge request. */
@@ -56,6 +61,13 @@ export function isDesktopBrowserCommandRequest(message: unknown): message is Des
     // Only a page the browser itself may visit: the renderer hands this straight to the
     // tab, and a scheme it cannot follow would open a tab that goes nowhere.
     return typeof open.url === 'string' && /^https?:\/\//i.test(open.url)
+  }
+  if (candidate.clearSiteData !== undefined) {
+    if (typeof candidate.clearSiteData !== 'object' || candidate.clearSiteData === null
+      || Array.isArray(candidate.clearSiteData)) return false
+    const site = candidate.clearSiteData as Record<string, unknown>
+    if (site.browserCache !== undefined && typeof site.browserCache !== 'boolean') return false
+    return typeof candidate.lease === 'string'
   }
   if (candidate.clear !== undefined && candidate.clear !== 'events') return false
   if (candidate.eventsSince !== undefined && !Number.isSafeInteger(candidate.eventsSince)) return false
@@ -110,6 +122,11 @@ export async function answerBrowserCommand(
       const format = request.screenshot.format === 'jpeg' ? 'jpeg' : 'png'
       const image = await guests.screenshot(request.lease, format, request.screenshot.quality)
       reply({ data: Buffer.from(image).toString('base64'), format })
+      return
+    }
+    if (request.clearSiteData !== undefined) {
+      await guests.clearSiteData(request.lease, request.clearSiteData.browserCache === true)
+      reply({ cleared: true })
       return
     }
     if (request.clear === 'events') {
