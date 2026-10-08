@@ -107,15 +107,25 @@ async function boot() {
       { timeout: 2_000 },
     ).catch(() => null)
     if (editor === null) return
-    const menu = await waitFor(() => {
-      expect(container.querySelector('[data-document-viewer-menu]')).not.toBeNull()
-      return container.querySelector<HTMLElement>('[data-document-viewer-menu]')
-    })
-    await act(async () => { fireEvent.click(menu as HTMLElement) })
-    const items = await screen.findAllByRole('menuitem')
-    // The editor is listed first, so the first implementation after it is the one the
-    // registry's priority puts there.
-    await act(async () => { fireEvent.click((items[1] ?? items[0]) as HTMLElement) })
+    // Choose an implementation and stop when one actually renders lines. The picker is
+    // opened before every attempt because a choice closes it, and the entries are not
+    // identified by label here: their titles are localized, and a spec that matched on them
+    // would be asserting a translation rather than a view.
+    for (let index = 1; index < 6; index += 1) {
+      const menu = await waitFor(() => {
+        expect(container.querySelector('[data-document-viewer-menu]')).not.toBeNull()
+        return container.querySelector<HTMLElement>('[data-document-viewer-menu]')
+      })
+      await act(async () => { fireEvent.click(menu as HTMLElement) })
+      const items = await screen.findAllByRole('menuitem')
+      if (items.length <= index) return
+      await act(async () => { fireEvent.click(items[index] as HTMLElement) })
+      const rendered = await waitFor(
+        () => { expect(container.querySelectorAll('[data-textpreview-line]').length).toBeGreaterThan(0) },
+        { timeout: 1_000 },
+      ).then(() => true, () => false)
+      if (rendered) return
+    }
   }
   return { rt, view, open, register, read, bytes, showReader }
 }
