@@ -4,8 +4,9 @@
  *
  * The shell cannot be exercised from outside the main process, and CDP-injected keys never
  * reach its input hook, so this path is the one that has to be pinned down by a test: the
- * signal arrives, the window reads the webview element it owns, and the passage goes into
- * the composer through the same call the other two selections use.
+ * signal arrives, the window reads the page it owns, and the passage goes into the composer
+ * through the same call the other two selections use. A page is either a webview (its own
+ * process) or an iframe, and the gesture has to work in whichever the sidebar chose.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { installQuoteShortcut } from '../src/client/quote-selection.ts'
@@ -35,8 +36,48 @@ function signalSource(): { readonly fire: () => void; readonly subscribed: boole
   }
 }
 
-// jsdom has no `execCommand` at all, so the insertion point is defined before it is spied on.
-Object.defineProperty(document, 'execCommand', { configurable: true, writable: true, value: () => true })
+/**
+ * jsdom has no `execCommand`, so the insertion point is defined rather than reached for.
+ * @returns the values the composer was asked to insert.
+ */
+function recordInsertion(): string[] {
+  const inserted: string[] = []
+  Object.defineProperty(document, 'execCommand', {
+    configurable: true,
+    writable: true,
+    value: (_command: string, _show?: boolean, value?: string) => {
+      inserted.push(String(value))
+      return true
+    },
+  })
+  return inserted
+}
+
+/** A mounted webview element whose reading is observable. */
+function mountWebview(read: string): { readonly asked: string[] } {
+  document.body.innerHTML = '<div contenteditable="true"></div><webview data-sidebar-browser-frame></webview>'
+  const asked: string[] = []
+  const frame = document.querySelector('webview') as HTMLElement & { executeJavaScript: (code: string) => Promise<unknown> }
+  frame.executeJavaScript = (code: string) => {
+    asked.push(code)
+    return Promise.resolve(read)
+  }
+  return { asked }
+}
+
+/** Select the first characters of the embedded document's first paragraph. */
+function selectInFrame(embedded: HTMLIFrameElement, end: number): void {
+  const inner = embedded.contentDocument as Document
+  inner.body.innerHTML = '<p>embedded page passage</p>'
+  const node = inner.querySelector('p')?.firstChild ?? inner.body
+  const range = inner.createRange()
+  range.setStart(node, 0)
+  range.setEnd(node, end)
+  const selection = inner.getSelection() as Selection
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
 describe('quoting a page selection', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -44,47 +85,42 @@ describe('quoting a page selection', () => {
     document.body.innerHTML = ''
   })
 
-  it('reads the page through the webview element and puts the passage in the composer', async () => {
+  it('reads a webview with the production expression and quotes it', async () => {
     const signal = signalSource()
-    document.body.innerHTML = '<div contenteditable="true"></div><webview data-sidebar-browser-frame></webview>'
-    const frame = document.querySelector('webview') as HTMLElement & { executeJavaScript: (code: string) => Promise<unknown> }
-    const asked: string[] = []
-    frame.executeJavaScript = (code: string) => {
-      asked.push(code)
-      return Promise.resolve('quoted from the page')
-    }
-    const inserted: string[] = []
-    vi.spyOn(document, 'execCommand').mockImplementation((_command: string, _show?: boolean, value?: string) => {
-      inserted.push(String(value))
-      return true
-    })
+    const page = mountWebview('quoted from the page')
+    const inserted = recordInsertion()
 
     installQuoteShortcut(context())
     expect(signal.subscribed).toBe(true)
     signal.fire()
 
     await vi.waitFor(() => { expect(inserted.join('')).toContain('quoted from the page') })
-    // The reading half is the production expression, not something the test invented.
-    expect(asked[0]).toBe('window.getSelection().toString()')
-    // A quote arrives as a quote, so the caret is left after it for the reader's question.
+    expect(page.asked[0]).toBe('window.getSelection().toString()')
     expect(inserted.join('')).toContain('> quoted from the page')
   })
 
-  it('does nothing when the page has no selection', async () => {
+  it('reads an embedded page, which has no webview to ask', () => {
     const signal = signalSource()
-    document.body.innerHTML = '<div contenteditable="true"></div><webview data-sidebar-browser-frame></webview>'
-    const frame = document.querySelector('webview') as HTMLElement & { executeJavaScript: (code: string) => Promise<unknown> }
-    frame.executeJavaScript = () => Promise.resolve('')
-    const inserted: string[] = []
-    vi.spyOn(document, 'execCommand').mockImplementation((_command: string, _show?: boolean, value?: string) => {
-      inserted.push(String(value))
-      return true
-    })
+    document.body.innerHTML = '<div contenteditable="true"></div><iframe data-sidebar-browser-frame></iframe>'
+    const embedded = document.querySelector('iframe') as HTMLIFrameElement
+    selectInFrame(embedded, 8)
+    const inserted = recordInsertion()
 
     installQuoteShortcut(context())
     signal.fire()
 
-    // Give the promise a turn before asserting that nothing happened.
+    expect(inserted.join('')).toContain('embedded')
+    expect(inserted.join('')).toContain('> ')
+  })
+
+  it('does nothing when the page has no selection', async () => {
+    const signal = signalSource()
+    mountWebview('')
+    const inserted = recordInsertion()
+
+    installQuoteShortcut(context())
+    signal.fire()
+
     await Promise.resolve()
     await Promise.resolve()
     expect(inserted).toEqual([])

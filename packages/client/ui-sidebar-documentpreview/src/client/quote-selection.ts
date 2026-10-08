@@ -126,13 +126,27 @@ export function installQuoteShortcut(ctx: Context): void {
     const products = (globalThis as { dshDesktop?: { quotes?: { subscribe: (listener: () => void) => () => void } } })
       .dshDesktop
     const unsubscribe = products?.quotes?.subscribe(() => {
+      // A page can be shown as a webview (its own process) or as an iframe; the gesture has to
+      // work in whichever the sidebar chose. The webview is the one whose selection this window
+      // can always read; an iframe is readable only while it is same-origin, so the read is
+      // guarded rather than assumed.
       const frame = document.querySelector('webview[data-sidebar-browser-frame]') as
         | { executeJavaScript?: (code: string) => Promise<unknown> }
         | null
-      if (frame === null || typeof frame.executeJavaScript !== 'function') return
-      void frame.executeJavaScript('window.getSelection().toString()').then((text: unknown) => {
-        if (typeof text === 'string' && text.trim() !== '') quoteInto(text)
-      }).catch(() => undefined)
+      if (frame !== null && typeof frame.executeJavaScript === 'function') {
+        void frame.executeJavaScript('window.getSelection().toString()').then((text: unknown) => {
+          if (typeof text === 'string' && text.trim() !== '') quoteInto(text)
+        }).catch(() => undefined)
+        return
+      }
+      const embedded = document.querySelector('iframe[data-sidebar-browser-frame]')
+      if (!(embedded instanceof HTMLIFrameElement)) return
+      try {
+        const text = embedded.contentWindow?.getSelection()?.toString() ?? ''
+        if (text.trim() !== '') quoteInto(text)
+      } catch {
+        // A cross-origin page owns its selection; there is nothing this window may read.
+      }
     })
     return () => { unsubscribe?.() }
   }, 'ui-sidebar-documentpreview: quoted page selections')
