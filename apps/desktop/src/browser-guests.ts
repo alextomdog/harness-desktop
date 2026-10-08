@@ -254,12 +254,59 @@ export class DesktopBrowserGuests {
   }
 
   /**
+   * The script that brings a page's tab to the front.
+   *
+   * A retained tab that is not the selected one keeps a 0×0 view, and a guest with a
+   * 0×0 view has nothing painted for Electron to capture. The shell cannot select a
+   * tab — the dock owns that state — but the renderer it belongs to can, through the
+   * contract the dock already publishes: a guest element carries its lease as `name`,
+   * its `data-dockkit-content` ancestor names the tab, and the strip holds a chip per
+   * tab. Clicking that chip is exactly what a person does to look at the page.
+   * @param leaseId - the lease of the page to show.
+   * @returns the script, which resolves to a short report of what it found.
+   */
+  private revealScript(leaseId: string): string {
+    return `(async () => {
+  const guest = [...document.querySelectorAll('webview')].find(el => el.getAttribute('name') === ${JSON.stringify(leaseId)});
+  if (!guest) return 'no-guest';
+  const cell = guest.closest('[data-dockkit-content]');
+  const tabId = cell && cell.dataset.dockkitContent;
+  if (!tabId) return 'no-tab';
+  const chip = [...document.querySelectorAll('[data-dockkit-tab]')].find(el => el.dataset.dockkitTab === tabId);
+  if (!chip) return 'no-chip';
+  chip.click();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const rect = guest.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) return 'shown';
+  }
+  return 'still-empty';
+})()`
+  }
+
+  /**
+   * Show a page's tab, so its guest is painted and its area can be captured.
+   *
+   * Best effort by design: the caller captures afterwards and reports the guest's own
+   * refusal when even showing the page produces nothing, which is the only honest
+   * thing to say about a page that cannot be painted.
+   * @param leaseId - the lease of the page to show.
+   */
+  private async reveal(leaseId: string): Promise<void> {
+    const owner = this.leases.get(leaseId as DesktopBrowserLeaseId)?.owner
+    if (owner === undefined || owner.isDestroyed()) return
+    await owner.executeJavaScript(this.revealScript(leaseId), true).catch(() => undefined)
+  }
+
+  /**
    * One page as an image, through Electron rather than the protocol.
    *
    * `Page.captureScreenshot` does not answer for a webview guest: the first live
    * attempt hung until its deadline fired, and it kept doing so after the Page
    * domain was enabled and the full-page flag dropped. Electron's own capture is
-   * the API a guest has.
+   * the API a guest has — but it captures paint, so a page whose tab is not on
+   * screen has nothing to give. The page is therefore shown first and the capture
+   * retried while the view comes up.
    * @param leaseId - the lease received from the Host.
    * @param format - `png`, or `jpeg` at the given quality.
    * @param quality - JPEG quality 0-100; ignored for png.
@@ -280,15 +327,19 @@ export class DesktopBrowserGuests {
       throw new Error('the application window is minimized, so nothing is being painted and there is no image to take; '
         + 'restore the window and try again')
     }
-    const image = await lease.guest.capturePage()
-    const bytes = format === 'jpeg' ? image.toJPEG(quality ?? 90) : image.toPNG()
-    if (bytes.length === 0) {
-      // Also measured rather than guessed: with the window shown, a page whose tab
-      // is not the selected one keeps a 0×0 view, so there is still nothing painted.
-      throw new Error('the page has no painted surface to capture: its view measures 0×0, '
-        + 'so the tab showing it is not the one on screen (or the sidebar is collapsed)')
+    await this.reveal(leaseId)
+    let bytes = new Uint8Array(0)
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const image = await lease.guest.capturePage()
+      // Copied out of the Buffer Electron returns: the same bytes, as a plain array.
+      bytes = new Uint8Array(format === 'jpeg' ? image.toJPEG(quality ?? 90) : image.toPNG())
+      if (bytes.length > 0) return bytes
+      await new Promise(resolve => setTimeout(resolve, 150))
     }
-    return bytes
+    // Also measured rather than guessed: with the window shown, a page whose tab is
+    // not the selected one still keeps a 0×0 view, so there is nothing painted.
+    throw new Error('the page has no painted surface to capture: its view measures 0×0, '
+      + 'so the tab showing it is not the one on screen (or the sidebar is collapsed)')
   }
 
   /** The live guest a lease names, or a refusal. */
