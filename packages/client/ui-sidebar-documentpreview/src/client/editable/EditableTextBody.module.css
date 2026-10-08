@@ -1,8 +1,16 @@
 /**
- * The editor fills the preview's body and scrolls inside itself, so the tab's
- * scrollport keeps measuring the same box it always did.
+ * The editor is one surface, not two modes: the highlighted text and the caret are the
+ * same view, so a reader types where they read. Two layers share it — a paint layer that
+ * shows the highlighted source and a caret layer that owns selection, undo and IME —
+ * pinned to identical metrics through the variables below, so the caret always lands on
+ * the glyph it belongs to. Line numbers sit in a gutter that scrolls with the text.
  */
 .editor {
+  --dsh-editor-pad: 12px;
+  --dsh-editor-font: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  --dsh-editor-size: 12px;
+  --dsh-editor-leading: 1.6;
+
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -45,19 +53,75 @@
   background: var(--dsh-surface-hover, rgb(0 0 0 / 4%));
 }
 
-.area {
+.surface {
+  display: flex;
   flex: 1;
   min-height: 0;
-  padding: 12px;
+  overflow: hidden;
+}
+
+/* Numbers scroll with the text, but are neither focusable nor selectable. */
+.gutter {
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: var(--dsh-editor-pad) 8px;
+  border-right: 1px solid var(--dsh-border-subtle, rgb(0 0 0 / 8%));
+  color: var(--dsh-text-tertiary, #9a9a9a);
+  font-family: var(--dsh-editor-font);
+  font-size: var(--dsh-editor-size);
+  line-height: var(--dsh-editor-leading);
+  text-align: right;
+  user-select: none;
+}
+
+.lineNumber {
+  min-height: calc(var(--dsh-editor-size) * var(--dsh-editor-leading));
+  white-space: pre;
+}
+
+.stack {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Both layers set the same box, so one character lands on the same pixel in each. */
+.highlight,
+.area {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: var(--dsh-editor-pad);
   border: 0;
+  font-family: var(--dsh-editor-font);
+  font-size: var(--dsh-editor-size);
+  line-height: var(--dsh-editor-leading);
+  tab-size: 2;
+  white-space: pre;
+}
+
+/* The paint layer: the highlighted source, never pointed at and never selected. */
+.highlight {
+  overflow: hidden;
+  color: var(--dsh-text-primary, #1a1a1a);
+  pointer-events: none;
+}
+
+.highlightLine {
+  min-height: calc(var(--dsh-editor-size) * var(--dsh-editor-leading));
+}
+
+/* The caret layer: the same text, invisible, so the caret owns what the paint shows. */
+.area {
   outline: none;
   resize: none;
   background: transparent;
-  color: var(--dsh-text-primary, #1a1a1a);
-  font-family: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-  font-size: 12px;
-  line-height: 1.6;
-  tab-size: 2;
-  white-space: pre;
+  color: transparent;
+  caret-color: var(--dsh-text-primary, #1a1a1a);
   overflow: auto;
+}
+
+.area::selection {
+  background: var(--dsh-selection, rgb(64 128 255 / 28%));
+  color: transparent;
 }

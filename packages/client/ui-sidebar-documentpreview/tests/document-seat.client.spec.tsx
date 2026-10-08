@@ -97,13 +97,16 @@ async function boot() {
     // arrives, and pressing it then is what keeps the reader's own paging — the pages
     // the editor would otherwise read ahead — intact. A renderer that declares no
     // editor has no toggle, and is already a reader.
-    const toggle = await waitFor(() => {
-      expect(container.querySelector('[data-document-preview], [data-textpreview-editor], [data-textpreview-state]')).not.toBeNull()
-      return container.querySelector<HTMLElement>('[data-textpreview-tool="edit"]')
+    // A document opens in its editor, and what shows a rendered view instead is CHOOSING
+    // that implementation from the picker — which is what these specs do. The editor is
+    // listed first, so the first implementation after it is the one priority puts there.
+    const menu = await waitFor(() => {
+      expect(container.querySelector('[data-document-viewer-menu]')).not.toBeNull()
+      return container.querySelector<HTMLElement>('[data-document-viewer-menu]')
     })
-    if (toggle !== null && toggle.getAttribute('aria-pressed') === 'true') {
-      await act(async () => { fireEvent.click(toggle) })
-    }
+    await act(async () => { fireEvent.click(menu as HTMLElement) })
+    const items = await screen.findAllByRole('menuitem')
+    await act(async () => { fireEvent.click(items[1] as HTMLElement) })
   }
   return { rt, view, open, register, read, bytes, showReader }
 }

@@ -364,9 +364,9 @@ describe('TextPreview — the file\'s metadata', () => {
     const h = harness({ 1: page(1, ['old'], true) })
     const otherId = 'tab-2' as TabId
     const other = harness({}, otherId)
-    // Both tabs read: the second tab's props come from the first store, so its reader
-    // preference has to be recorded there — the same write the toolbar's toggle makes.
-    h.instance.actions.edited(otherId, false)
+    // Both tabs read: the second tab's props come from the first store, so its CHOICE of
+    // implementation has to be recorded there — the same write the viewer menu makes.
+    h.instance.actions.selected(otherId, PLAIN_BODY_ID)
     const firstProps = h.props()
     const secondProps = { ...firstProps, useTabInfo: other.props().useTabInfo }
     const first = render(<TextPreview {...firstProps} />)

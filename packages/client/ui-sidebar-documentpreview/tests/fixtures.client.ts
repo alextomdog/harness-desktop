@@ -27,7 +27,7 @@ import { createTextStore } from '../src/client/store.ts'
 import type { TextStore } from '../src/client/store.ts'
 import type { DocumentPreviewProps } from '../src/client/document/contract.ts'
 import { TextBody } from '../src/client/text/TextBody.tsx'
-import { textBodyDefinition } from '../src/client/text/index.ts'
+import { PLAIN_BODY_ID, textBodyDefinition } from '../src/client/text/index.ts'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 
 type BodySlot = PropsRenderSlots<'sidebar.right.tab.document'>['renderSlot']
@@ -124,12 +124,11 @@ export interface Harness {
 /**
  * Which face of one document a spec is about.
  *
- * A document now opens in its editor, and most of these specs are about how the
- * READER reads: its pages, its loading indicator, the place it keeps. A spec that
- * asserts reading therefore has to say so, exactly as a person does when they press
- * the toolbar's read toggle — the same store write, not a test-only shortcut.
- * `document` leaves the tab's preference unset, which is the real default and what
- * the editor's own spec needs.
+ * A document that can be edited opens IN its editor — there is no mode to enter — so a
+ * spec that asserts how the READER reads has to ask for the reader, exactly as a person
+ * does: by choosing that implementation from the viewer menu. That is the same store
+ * write, not a test-only shortcut. `document` leaves the choice unset, which is the real
+ * default and what the editor's own spec needs.
  */
 export type HarnessMode = 'reader' | 'document'
 
@@ -159,7 +158,9 @@ export function harness(
   options: HarnessOptions = {},
 ): Harness {
   const instance = createTextStore().create()
-  if ((options.mode ?? 'reader') === 'reader') instance.actions.edited(tabId, false)
+  // Choosing the plain-text implementation is what the viewer menu does; the editor is
+  // simply what happens when nobody has chosen anything.
+  if ((options.mode ?? 'reader') === 'reader') instance.actions.selected(tabId, PLAIN_BODY_ID)
   const pages: Record<number, RemoteResult<WorkspaceFileText>> = { ...script }
   const read = vi.fn<ReadWorkspaceFilePage>((_session, _path, offset) =>
     Promise.resolve(pages[offset] ?? failure('workspace-file/not-found', { path: PATH })))

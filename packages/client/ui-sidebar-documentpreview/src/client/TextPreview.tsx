@@ -2,10 +2,10 @@
  * The text preview's body: a file's content, or the reason it is not showing.
  *
  * Two sources meet here. The standard `useResource` hook gives the file's
- * metadata — its version — and this type's
+ * metadata 鈥?its version 鈥?and this type's
  * own store holds the content it read through its face. Metadata changes reload
- * the current preview while automatic refresh is enabled. A failed metadata frame — the file gone, its
- * workspace unknown — takes the same bar's place over the pages already loaded,
+ * the current preview while automatic refresh is enabled. A failed metadata frame 鈥?the file gone, its
+ * workspace unknown 鈥?takes the same bar's place over the pages already loaded,
  * with the same reload. The type's controls, viewer choice, wrap and reload, sit at the end of
  * the path row; the Sidebar's strip carries none of them.
  */
@@ -15,10 +15,11 @@ import clsx from 'clsx'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  FileTypeIcon, IconEditOutlineRegular, IconNowrapFillRegular, IconPauseOutlineRegular, IconPlayOutlineRegular,
+  FileTypeIcon, IconNowrapFillRegular, IconPauseOutlineRegular, IconPlayOutlineRegular,
   IconRefreshOutlineRegular, IconWrapFillRegular, Menu, PathLabel, Tooltip, classifyFileType,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { pathPartsOf } from '@deepseek-ai/dsh-util-workspace-path'
+import { languageForPath } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TextInjected } from './face.ts'
 import { emptyFailureRecourse, failureLine } from './failure-line.ts'
 import { LoadingIndicator } from './LoadingIndicator.tsx'
@@ -36,15 +37,17 @@ import css from './TextPreview.module.css'
 export { linesOf, loadedPages, lastLineLoaded, scrollToLine } from './text/lines.ts'
 export type { LoadedPage } from './text/lines.ts'
 
+/** Stands for the editor in the viewer menu, where the alternatives are named by id. */
+const EDITOR_VIEW = '@editor'
+
 /**
  * Largest file that opens in its editor rather than its reader.
  *
  * Paging exists so a large file never has to be held whole, and editing holds it
  * whole. Below this size the editor is simply the better default; above it the reader
- * opens, and the toolbar still offers to edit — an offer that reads the file, so the
+ * opens, and the toolbar still offers to edit 鈥?an offer that reads the file, so the
  * cost follows the reader's explicit choice instead of arriving with the tab.
  */
-const EDIT_WHOLE_FILE_LIMIT = 1024 * 1024
 
 /** Private registration inputs; the framework binds the registry source to useDocumentPreviews. */
 export interface TextPreviewInjected extends TextInjected {
@@ -88,7 +91,7 @@ export function TextPreview({
   const mode = selected?.loading
   const contentRendererId = mode === 'renderer' ? selected?.id : undefined
   // What this tab has read, if it has read at all: the store's mode is absent before
-  // the first read, and a bucket can exist without one — every reader preference
+  // the first read, and a bucket can exist without one 鈥?every reader preference
   // lives here too, and writing one must not look like a read that already happened.
   // A fallback to the default mode did exactly that, which silently skipped the
   // first read of a tab whose only prior write was a preference.
@@ -106,16 +109,17 @@ export function TextPreview({
   const scrollportRef = useRef<HTMLElement | null>(null)
   const storedScrollTopRef = useRef(0)
   const [menuOpen, setMenuOpen] = useState(false)
-  // A document opens in its editor: a file that can be edited should not need to be
-  // asked twice, and the renderer already says whether it can. The toolbar's toggle
-  // is the only thing that records a different wish, per tab, in the store.
+  // The document view for a file that can be edited IS its editor: the source is painted
+  // with the same highlighting the read-only view used, line numbers run beside it, and
+  // the caret lives in it. There is no mode to enter and nothing to switch back to.
   //
-  // Editing holds the whole file, while paging exists so that a large one never has to
-  // be held at all — so the default follows the size the metadata already reports. A
-  // bigger file opens in its reader, where the toolbar still offers to edit it, and
-  // taking that offer reads the file: the reader's explicit choice, not a surprise.
-  const smallEnoughToEdit = meta.value?.bytes === undefined || meta.value.bytes <= EDIT_WHOLE_FILE_LIMIT
-  const editing = state?.editing ?? (selected?.editable === true && smallEnoughToEdit)
+  // The one thing that takes a reader out of the editor is CHOOSING another
+  // implementation from the viewer menu 鈥?the rendered markdown, say 鈥?which the store
+  // remembers per tab like every other reader preference. So the editor is the default
+  // rather than a state, and the menu is the alternative rather than a toggle.
+  const editableDocument = selected?.editable === true
+  // Nobody has named an implementation: the editor is what that means, so it is the view.
+  const editorPreferred = editableDocument && state?.rendererId === undefined
   const absolutePath = meta.value?.absolutePath ?? current?.complete?.absolutePath
   const displayPath = absolutePath ?? file.path
   // Contributions that hand the file to the Host wait for its Host path.
@@ -154,10 +158,10 @@ export function TextPreview({
   // a partial read would truncate the file. Reading a page moves `loadedThrough`,
   // which is what asks for the next one, and `eof` is what stops.
   useEffect(() => {
-    if (!editing || mode !== 'text-pages' || !canRead) return
+    if (!editorPreferred || mode !== 'text-pages' || !canRead) return
     if (current === undefined || current.eof || current.loading || current.failure !== undefined) return
     loadPage(tab.id, file, loadedThrough + 1, signal, meta.value?.version)
-  }, [editing, mode, canRead, current, loadedThrough, loadPage, tab.id, file, signal, meta.value?.version])
+  }, [editorPreferred, mode, canRead, current, loadedThrough, loadPage, tab.id, file, signal, meta.value?.version])
 
   // Come back where the reader was once there is content to scroll: on a remount,
   // after a reload rebuilt the content, or after the selected renderer changed.
@@ -232,7 +236,7 @@ export function TextPreview({
   // What editing would write back, when this file may be edited at all: the
   // renderer must show the file's OWN text, the read must hold the WHOLE file (a
   // save writes the entire buffer, so a partial one would truncate it), and bytes
-  // must survive a UTF-8 round trip — saving a lossy decode would corrupt them.
+  // must survive a UTF-8 round trip 鈥?saving a lossy decode would corrupt them.
   const editableText = useMemo((): string | undefined => {
     if (selected?.editable !== true || current?.version === undefined) return undefined
     if (content?.kind === 'text') return content.eof === true ? content.text : undefined
@@ -243,6 +247,12 @@ export function TextPreview({
     for (let at = 0; at < back.length; at += 1) if (back[at] !== content.data[at]) return undefined
     return decoded
   }, [selected?.editable, current?.version, content])
+
+  // The editor is what a file that can be edited opens as, unless the reader has chosen a
+  // different implementation from the viewer menu 鈥?the only thing that takes them out of
+  // it, and the only thing that brings the rendered view back.
+  const editing = editableText !== undefined && editorPreferred
+  const language = languageForPath(file.path)
 
   // A known binary suffix with no matching renderer never reads: no plain-text
   // fallback, no viewer control, only the path, the unsupported line, and the
@@ -284,7 +294,7 @@ export function TextPreview({
     <div className={css.preview} data-textpreview-state="text" data-textpreview-url={tab.contentId} data-document-preview={selected.id}>
       {meta.failure !== undefined && hasContent
         ? (
-          // The file's metadata failed — gone, or its workspace unknown — which
+          // The file's metadata failed 鈥?gone, or its workspace unknown 鈥?which
           // outranks a pending change; the pages already read stay under it.
           // With nothing read the body's own failure already says it, so the
           // bar would only repeat the same line.
@@ -315,18 +325,29 @@ export function TextPreview({
         )}
       <div className={css.header}>
         <PathLabel path={displayPath} className={css.path} data-textpreview-path />
-        {candidates.length > 1
+        {(candidates.length > 1 || editableDocument)
           && (
             <Menu
               open={menuOpen}
               anchor={(
-                <button type="button" className={clsx(css.tool, css.viewerTool)} aria-label={t('openWith')} title={selected.title()} data-document-viewer-menu onClick={() => { setMenuOpen(value => !value) }}>
-                  {selected.title()}
+                <button type="button" className={clsx(css.tool, css.viewerTool)} aria-label={t('openWith')} title={editing ? t('edit.start') : selected.title()} data-document-viewer-menu onClick={() => { setMenuOpen(value => !value) }}>
+                  {editing ? t('edit.start') : selected.title()}
                 </button>
               )}
-              items={candidates.map(candidate => ({ id: candidate.id, label: candidate.title() }))}
-              selectedId={selected.id}
-              onSelect={(id) => { actions.selected(tab.id, id); setMenuOpen(false) }}
+              items={[
+                // The editor is a view like every other one here, which is what makes the
+                // choice complete: a file with a single implementation would otherwise have
+                // no way back to a rendered view, and no way to say which one is showing.
+                ...editableDocument ? [{ id: EDITOR_VIEW, label: t('edit.start') }] : [],
+                ...candidates.map(candidate => ({ id: candidate.id, label: candidate.title() })),
+              ]}
+              selectedId={editing ? EDITOR_VIEW : selected.id}
+              onSelect={(id) => {
+                // Choosing the editor CLEARS the implementation rather than naming one, so
+                // the default stays the absence of a choice 鈥?the same thing a fresh tab has.
+                actions.selected(tab.id, id === EDITOR_VIEW ? undefined : id)
+                setMenuOpen(false)
+              }}
               onClose={() => { setMenuOpen(false) }}
               align="end"
               portal
@@ -359,20 +380,6 @@ export function TextPreview({
             </button>
           </Tooltip>
         </span>
-        {selected?.editable === true && (
-          <Tooltip label={t(editing ? 'edit.stop' : 'edit.start')} side="bottom" delayMs={500}>
-            <button
-              type="button"
-              className={css.tool}
-              aria-pressed={editing}
-              aria-label={t(editing ? 'edit.stop' : 'edit.start')}
-              data-textpreview-tool="edit"
-              onClick={() => { actions.edited(tab.id, !editing) }}
-            >
-              <IconEditOutlineRegular />
-            </button>
-          </Tooltip>
-        )}
         {/* Preview and file-tree refresh controls own different reload lifecycles and locale namespaces. */}
         {/* jscpd:ignore-start */}
         <Tooltip label={t('reload')} shortcutKeys={tab.refreshShortcut?.keys} side="bottom" delayMs={500}>
@@ -412,6 +419,9 @@ export function TextPreview({
           <EditableTextBody
             text={editableText}
             version={current?.version ?? ''}
+            // Omitted, not `undefined`: an absent language is not the same key as an
+            // empty one, and the highlighter reads absence as "no grammar".
+            {...language === undefined ? {} : { language }}
             reload={reload}
             onDirty={(dirty) => { actions.dirtied(tab.id, dirty) }}
             save={(value, expectedVersion, signal) => save(file, value, expectedVersion, signal)}
@@ -428,7 +438,7 @@ export function TextPreview({
           // empty one, and a renderer that saves must see it as absent.
           ...current?.version === undefined ? {} : { version: current.version },
           addResource: add, setResources: set,
-          // A renderer that edits the file itself — the spreadsheet grid does — reports
+          // A renderer that edits the file itself 鈥?the spreadsheet grid does 鈥?reports
           // its state through the same store the text editor writes, so one dot serves
           // every tab.
           onDirty: (dirty: boolean) => { actions.dirtied(tab.id, dirty) },

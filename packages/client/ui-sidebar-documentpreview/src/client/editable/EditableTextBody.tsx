@@ -1,6 +1,16 @@
 /**
  * The editor: one text file the reader owns while its tab is open.
  *
+ * It is ONE surface, not two modes. The source is painted with the same highlighter the
+ * read-only view uses, and the caret lives on top of it, so a reader types where they
+ * read — there is no "edit mode" to enter and nothing to switch back to. Line numbers
+ * run down a gutter beside the text, as they do in the view this replaces.
+ *
+ * The paint and the caret are two elements because a browser gives a real caret,
+ * selection, undo and IME to a textarea and nothing else: the `pre` shows the tokens,
+ * the transparent textarea owns the editing, and both are pinned to one set of font
+ * metrics so the caret lands on the glyph it belongs to.
+ *
  * Saving is the READER's, not the clock's. Typing marks the tab dirty — the chip
  * grows the dot an editor shows — and Ctrl+S (or Cmd+S) writes the buffer under
  * the version the tab read. Nothing is written until then, so a file being edited
@@ -14,12 +24,19 @@
  * entire buffer, so a partially loaded one would truncate everything past what was
  * read. The caller enforces that; this component assumes it.
  */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode,
+} from 'react'
+import { useCodeHighlighter } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { HighlightSpan } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WriteWorkspaceFileOutcome } from '../rpc.ts'
 import css from './EditableTextBody.module.css'
 
 /** What the editor is telling the reader about its last save. */
 type SaveState = 'clean' | 'saving' | 'saved' | 'stale' | 'failed'
+
+/** What one Tab inserts: the repo's own indent, so a document does not gain tabs it did not have. */
+const INDENT = '  '
 
 /** Copy the editor shows. */
 export interface EditableTextLabels {
@@ -40,6 +57,8 @@ export interface EditableTextBodyProps {
   readonly text: string
   /** The version `text` came from. */
   readonly version: string
+  /** Grammar to highlight with, from the file's path; absent falls back to plain text. */
+  readonly language?: string
   /** Replace the file, guarded by the version the buffer was read at. */
   readonly save: (content: string, expectedVersion: string, signal: AbortSignal) => Promise<WriteWorkspaceFileOutcome>
   /** Ask the Host for the file again, after a refusal or an external write. */
@@ -50,10 +69,12 @@ export interface EditableTextBodyProps {
 }
 
 /**
- * @param props - the read text, its version, the save, the reload, and copy.
- * @returns the textarea, its save state, and the conflict's two choices.
+ * @param props - the read text, its version and grammar, the save, the reload, and copy.
+ * @returns the highlighted editable surface, its save state, and the conflict's choices.
  */
-export function EditableTextBody({ text, version, save, reload, onDirty, labels }: EditableTextBodyProps): ReactNode {
+export function EditableTextBody({
+  text, version, language, save, reload, onDirty, labels,
+}: EditableTextBodyProps): ReactNode {
   const [buffer, setBuffer] = useState(text)
   const [state, setState] = useState<SaveState>('clean')
   const [message, setMessage] = useState('')
@@ -69,6 +90,12 @@ export function EditableTextBody({ text, version, save, reload, onDirty, labels 
   // Set by "keep mine": the next text to arrive is the basis for a re-save rather
   // than a version to adopt.
   const resaveRef = useRef(false)
+  const areaRef = useRef<HTMLTextAreaElement | null>(null)
+  const paintRef = useRef<HTMLPreElement | null>(null)
+  const gutterRef = useRef<HTMLDivElement | null>(null)
+  // The shared lazy highlighter, bound to this file's grammar: it returns undefined while
+  // a lazily imported grammar is still on its way, and re-renders by itself when it lands.
+  const highlight = useCodeHighlighter(language)
 
   // The Host's text is the truth about the file. A buffer the reader has NOT
   // touched follows it — the agent, another window, this reader elsewhere. A
@@ -91,6 +118,30 @@ export function EditableTextBody({ text, version, save, reload, onDirty, labels 
   useEffect(() => {
     onDirty(buffer !== savedText)
   }, [buffer, savedText, onDirty])
+
+  const lines = useMemo(() => buffer.split('\n'), [buffer])
+  const spans = useMemo((): readonly (readonly HighlightSpan[])[] => {
+    const highlighted = highlight(buffer)
+    return highlighted ?? lines.map(line => [{ text: line, style: {} }])
+  }, [buffer, highlight, lines])
+
+  /**
+   * Keep the paint and the gutter where the caret layer is.
+   *
+   * A textarea is the only scroller of the three, so the other two follow it — after a
+   * scroll, and after every render, because a keystroke can change the line count under
+   * the caret without any scroll happening at all.
+   */
+  const syncLayers = useCallback((): void => {
+    const area = areaRef.current
+    if (area === null) return
+    if (paintRef.current !== null) {
+      paintRef.current.scrollTop = area.scrollTop
+      paintRef.current.scrollLeft = area.scrollLeft
+    }
+    if (gutterRef.current !== null) gutterRef.current.scrollTop = area.scrollTop
+  }, [])
+  useEffect(syncLayers)
 
   const commit = useCallback((): void => {
     const content = bufferRef.current
@@ -119,9 +170,22 @@ export function EditableTextBody({ text, version, save, reload, onDirty, labels 
   const onKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>): void => {
     // The editor's save key, wherever the caret is: the reader should not have to
     // leave the text to keep it.
-    if (event.key.toLowerCase() !== 's' || !(event.ctrlKey || event.metaKey)) return
+    if (event.key.toLowerCase() === 's' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault()
+      commit()
+      return
+    }
+    if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey) return
+    // Tab belongs to the TEXT here, not to focus. Leaving the document on a keystroke the
+    // reader aimed at their indentation is the one thing an editor must not do — and it
+    // is what a plain textarea does by default.
     event.preventDefault()
-    commit()
+    const area = event.currentTarget
+    const { selectionStart, selectionEnd, value } = area
+    setBuffer(`${value.slice(0, selectionStart)}${INDENT}${value.slice(selectionEnd)}`)
+    const caret = selectionStart + INDENT.length
+    // The value lands on the next render, so the caret is placed after it.
+    requestAnimationFrame(() => { area.setSelectionRange(caret, caret) })
   }, [commit])
 
   const line = state === 'saving'
@@ -158,26 +222,61 @@ export function EditableTextBody({ text, version, save, reload, onDirty, labels 
           </>
         )}
       </p>
-      <textarea
-        className={css.area}
-        value={buffer}
-        spellCheck={false}
-        aria-label={labels.editAria}
-        data-textpreview-textarea
-        onKeyDown={onKeyDown}
-        onChange={(event) => {
-          const next = event.target.value
-          // "Keep mine" asked for the current version; the reader's next keystroke
-          // lands on that basis, so the pending re-save is no longer needed.
-          if (resaveRef.current) resaveRef.current = false
-          setBuffer(next)
-        }}
-        onBlur={() => {
-          if (!resaveRef.current) return
-          resaveRef.current = false
-          commit()
-        }}
-      />
+      <div className={css.surface}>
+        <div
+          ref={gutterRef}
+          className={css.gutter}
+          aria-hidden
+          data-textpreview-gutter
+          // Wide enough for the longest number, so the text never shifts as it grows.
+          style={{ '--dsh-editor-digits': `${String(lines.length).length}ch` } as CSSProperties}
+        >
+          {lines.map((_content, index) => (
+            <div
+              className={css.lineNumber}
+              key={index}
+              data-textpreview-line-number
+              style={{ minWidth: 'var(--dsh-editor-digits)' }}
+            >
+              {index + 1}
+            </div>
+          ))}
+        </div>
+        <div className={css.stack}>
+          <pre ref={paintRef} className={css.highlight} aria-hidden data-textpreview-highlight>
+            {spans.map((lineSpans, index) => (
+              <div className={css.highlightLine} key={index}>
+                {lineSpans.length === 0 || lineSpans.every(span => span.text === '')
+                  // An empty line still needs a line box, or the paint drifts above the caret.
+                  ? <br />
+                  : lineSpans.map((span, at) => <span key={at} style={span.style}>{span.text}</span>)}
+              </div>
+            ))}
+          </pre>
+          <textarea
+            ref={areaRef}
+            className={css.area}
+            value={buffer}
+            spellCheck={false}
+            aria-label={labels.editAria}
+            data-textpreview-textarea
+            onKeyDown={onKeyDown}
+            onScroll={syncLayers}
+            onChange={(event) => {
+              const next = event.target.value
+              // "Keep mine" asked for the current version; the reader's next keystroke
+              // lands on that basis, so the pending re-save is no longer needed.
+              if (resaveRef.current) resaveRef.current = false
+              setBuffer(next)
+            }}
+            onBlur={() => {
+              if (!resaveRef.current) return
+              resaveRef.current = false
+              commit()
+            }}
+          />
+        </div>
+      </div>
     </div>
   )
 }
