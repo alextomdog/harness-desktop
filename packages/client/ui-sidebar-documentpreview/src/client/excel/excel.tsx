@@ -48,9 +48,11 @@ export function ExcelBody({ content, format, limits, t, loading, save, version, 
   const [dirty, setDirty] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [message, setMessage] = useState('')
-  // The drafts already written, so a re-parse of the same file does not save the
-  // same grid twice.
-  const writtenRef = useRef<readonly Sheet[] | undefined>(undefined)
+  // The grid reports its own load through `onChange`, so the first draft it hands over
+  // IS the file: it becomes the baseline the reader's edits are measured against.
+  // Without that every workbook would open already dirty — and, before saving became
+  // the reader's, already written back on open.
+  const baselineRef = useRef<readonly Sheet[] | undefined>(undefined)
   const workbookRef = useRef<HTMLDivElement>(null)
   const parsed = state !== undefined && !('error' in state) ? state.value : undefined
   // A writer for this format, a version to guard on, and nothing the writer drops.
@@ -77,7 +79,14 @@ export function ExcelBody({ content, format, limits, t, loading, save, version, 
   // The grid's edits are the reader's until `Ctrl+S`, so the tab's dot follows them and
   // the save hint stands where the save state will report itself.
   useEffect(() => {
-    const next = draft !== undefined && draft !== writtenRef.current
+    if (draft === undefined) {
+      baselineRef.current = undefined
+      setDirty(false)
+      onDirty?.(false)
+      return
+    }
+    baselineRef.current ??= draft
+    const next = draft !== baselineRef.current
     setDirty(next)
     onDirty?.(next)
   }, [draft, onDirty])
@@ -89,13 +98,13 @@ export function ExcelBody({ content, format, limits, t, loading, save, version, 
    */
   const commit = useCallback((force = false): void => {
     if (!writable || draft === undefined || data === undefined || parsed === undefined) return
-    if (!force && (draft === writtenRef.current || saveState === 'stale')) return
+    if (!force && (draft === baselineRef.current || saveState === 'stale')) return
     setSaveState('saving')
     void applyEdits(data, parsed.sheets, draft).then(
       bytes => save(file, bytes, version, new AbortController().signal),
     ).then((outcome) => {
       if (outcome.kind === 'saved') {
-        writtenRef.current = draft
+        baselineRef.current = draft
         setSaveState('saved')
         setDirty(false)
         onDirty?.(false)
@@ -156,7 +165,7 @@ export function ExcelBody({ content, format, limits, t, loading, save, version, 
         <Button size="sm" onClick={() => {
           // Keep the reader's grid and send it again: the file has moved, so the
           // tab has re-read it and `version` is the fresh basis.
-          writtenRef.current = undefined
+          baselineRef.current = undefined
           setSaveState('idle')
           commit(true)
         }}>{t('saveKeepMine')}</Button>

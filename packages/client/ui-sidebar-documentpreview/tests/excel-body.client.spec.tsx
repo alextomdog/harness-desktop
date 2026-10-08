@@ -116,6 +116,24 @@ it.each(['invalid', 'tooLarge', 'timeout', 'encoding', 'unexpected'])('shows loc
  * is the reader's until `Ctrl+S`, and until then the tab says so: the dot beside its
  * title, reported through the same store a text document reports through.
  */
+/**
+ * Opening a workbook is not an edit.
+ *
+ * The grid reports its own load through the same callback a cell edit arrives on, so
+ * the first draft is the file itself. Taking it for an edit marked every workbook dirty
+ * the moment it opened — and, while a debounce did the saving, wrote it back on open.
+ */
+it('opens a workbook clean, because the grid reporting its load is not an edit', async () => {
+  mocked.parse.mockResolvedValue(value)
+  const onDirty = vi.fn()
+  render(<ExcelBody {...loadedProps} version="v1" save={vi.fn() as never} onDirty={onDirty} />)
+  await waitFor(() => { expect(mocked.workbook).toHaveBeenCalledOnce() })
+  const onChange = (mocked.workbook.mock.calls[0]![0] as { onChange: (next: unknown) => void }).onChange
+  await act(async () => { onChange(value.sheets) })
+  expect(onDirty).toHaveBeenLastCalledWith(false)
+  expect(screen.queryByText(en.saveHint)).toBeNull()
+})
+
 it('keeps an edit unsaved until Ctrl+S writes it, reporting it dirty in between', async () => {
   mocked.parse.mockResolvedValue(value)
   mocked.applyEdits.mockResolvedValue(new Uint8Array([9]))
@@ -124,6 +142,8 @@ it('keeps an edit unsaved until Ctrl+S writes it, reporting it dirty in between'
   const view = render(<ExcelBody {...loadedProps} version="v1" save={save as never} onDirty={onDirty} />)
   await waitFor(() => { expect(mocked.workbook).toHaveBeenCalledOnce() })
   const onChange = (mocked.workbook.mock.calls[0]![0] as { onChange: (next: unknown) => void }).onChange
+  // The grid reports its load first, as the real one does.
+  await act(async () => { onChange(value.sheets) })
   await act(async () => {
     onChange([{ name: 'Budget', celldata: [{ r: 0, c: 0, v: { v: 'x', m: 'x' } }] }])
   })
@@ -150,6 +170,7 @@ it('offers the choices when the file moved, and re-sends the reader grid when as
   const view = render(<ExcelBody {...loadedProps} version="v1" save={save as never} />)
   await waitFor(() => { expect(mocked.workbook).toHaveBeenCalledOnce() })
   const onChange = (mocked.workbook.mock.calls[0]![0] as { onChange: (next: unknown) => void }).onChange
+  await act(async () => { onChange(value.sheets) })
   await act(async () => {
     onChange([{ name: 'Budget', celldata: [{ r: 0, c: 0, v: { v: 'x', m: 'x' } }] }])
   })
