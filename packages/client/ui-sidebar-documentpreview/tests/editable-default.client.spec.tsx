@@ -11,7 +11,7 @@
  * the reader would otherwise fetch on demand are fetched for it.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { TextPreview } from '../src/client/TextPreview.tsx'
 import { PLAIN_BODY_ID } from '../src/client/text/index.ts'
 import { TAB_ID, harness, page, settle } from './fixtures.client.ts'
@@ -50,9 +50,13 @@ describe('what a document opens as', () => {
     const h = harness(twoPages, TAB_ID, { mode: 'document' })
     const view = render(<TextPreview {...h.props()} />)
     await settle()
-    const area = view.container.querySelector<HTMLTextAreaElement>('[data-textpreview-textarea]')
-    expect(area).not.toBeNull()
-    await act(async () => { fireEvent.select(area as HTMLTextAreaElement) })
+    // The editor appears once the whole file is in hand, which is a read, not a render.
+    const area = await waitFor(() => {
+      const found = view.container.querySelector<HTMLTextAreaElement>('[data-textpreview-textarea]')
+      expect(found).not.toBeNull()
+      return found as HTMLTextAreaElement
+    })
+    await act(async () => { fireEvent.select(area) })
     // One mark, and it is the first line's, because the caret starts at the top.
     expect(view.container.querySelectorAll('[data-textpreview-active-line]')).toHaveLength(1)
     expect(view.container.querySelector('[data-textpreview-active-line-number]')?.textContent).toBe('1')
