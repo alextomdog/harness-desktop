@@ -74,6 +74,12 @@ export interface DesktopBrowserControl {
    */
   newPage(url: string): Promise<DesktopBrowserPage | undefined>
   /**
+   * Discard the events captured for one page.
+   * @param lease - the page.
+   * @returns how many events were discarded.
+   */
+  clearEvents(lease: string): Promise<number>
+  /**
    * Route one message from the shell.
    * @param message - the message, as received.
    * @returns whether this bridge consumed it.
@@ -148,6 +154,11 @@ export function installDesktopBrowserControl(deadlineMs = BROWSER_COMMAND_DEADLI
       if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
       const page = reply.page
       return page === null || page === undefined ? undefined : page as DesktopBrowserPage
+    },
+    async clearEvents(lease): Promise<number> {
+      const reply = await ask({ lease, clear: 'events' })
+      if (typeof reply.error === 'string') throw new Error(`desktop browser: ${reply.error}`)
+      return typeof reply.removed === 'number' ? reply.removed : 0
     },
     handle(message: unknown): boolean {
       if (typeof message !== 'object' || message === null) return false

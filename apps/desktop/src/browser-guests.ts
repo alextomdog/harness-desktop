@@ -303,6 +303,24 @@ export class DesktopBrowserGuests {
   }
 
   /**
+   * Discard what capture holds for one page.
+   *
+   * The sequence keeps counting, so a caller that was reading from a point still gets
+   * only what came after it — and a listing that follows a clear says so rather than
+   * replaying the traffic the caller asked to forget.
+   * @param leaseId - the lease received from the Host.
+   * @returns how many events were discarded.
+   */
+  clearCaptured(leaseId: string): number {
+    const guest = this.guestOf(leaseId)
+    const held = this.captured.get(guest)
+    if (held === undefined) return 0
+    const removed = held.events.length
+    held.events.splice(0, removed)
+    return removed
+  }
+
+  /**
    * One page as an image, through Electron rather than the protocol.
    *
    * `Page.captureScreenshot` does not answer for a webview guest: the first live

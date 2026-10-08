@@ -31,6 +31,13 @@ export interface DesktopBrowserCommandRequest {
    * no lease: it is what an agent asks for when there is nothing to address yet.
    */
   readonly newPage?: { readonly url: string }
+  /**
+   * Discard what capture holds for this lease.
+   *
+   * Present means "forget it": a caller about to reproduce an action asks for a clean
+   * window, and the events already held are the ones it does not want to read past.
+   */
+  readonly clear?: 'events'
 }
 
 /** Whether a message from the Host is a browser-bridge request. */
@@ -50,6 +57,7 @@ export function isDesktopBrowserCommandRequest(message: unknown): message is Des
     // tab, and a scheme it cannot follow would open a tab that goes nowhere.
     return typeof open.url === 'string' && /^https?:\/\//i.test(open.url)
   }
+  if (candidate.clear !== undefined && candidate.clear !== 'events') return false
   if (candidate.eventsSince !== undefined && !Number.isSafeInteger(candidate.eventsSince)) return false
   if (candidate.screenshot !== undefined) {
     if (typeof candidate.screenshot !== 'object' || candidate.screenshot === null
@@ -102,6 +110,10 @@ export async function answerBrowserCommand(
       const format = request.screenshot.format === 'jpeg' ? 'jpeg' : 'png'
       const image = await guests.screenshot(request.lease, format, request.screenshot.quality)
       reply({ data: Buffer.from(image).toString('base64'), format })
+      return
+    }
+    if (request.clear === 'events') {
+      reply({ removed: guests.clearCaptured(request.lease) })
       return
     }
     if (request.method === undefined) {

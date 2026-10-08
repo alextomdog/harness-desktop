@@ -539,6 +539,80 @@ function registerBrowserTools(ctx: Context, control: DesktopBrowserControl): voi
   }))
 
   ctx.tools.register(defineTool({
+    name: 'click_element',
+    description: 'Click one element in a page of the built-in browser. The selector must match exactly one element '
+      + 'unless index names which match. The element must be painted. A click can submit data or navigate, so it '
+      + 'requires confirm: true.',
+    parameters: {
+      selector: { type: 'string', required: true, description: 'CSS selector, resolved in the page.' },
+      index: { type: 'number', description: 'Zero-based match to click when the selector matches several.' },
+      confirm: { type: 'boolean', required: true, description: 'Must be true to authorize this click.' },
+      pageIdx: { type: 'number', description: 'Page to click in, as select_page lists it. Defaults to the only page.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          clicked: { type: 'string', required: true },
+          x: { type: 'number', required: true },
+          y: { type: 'number', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Clicked ${value.clicked} at ${String(value.x)},${String(value.y)}.`,
+      }],
+    },
+    async execute(args) {
+      if (args.confirm !== true) throw new Error('a click can submit data or navigate: pass confirm: true')
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to click in')
+      const resolution = await control.command(page.lease, 'Runtime.evaluate', {
+        expression: resolveClickExpression(args.selector, args.index),
+        returnByValue: true,
+      }) as { result?: { value?: ClickResolution } }
+      const found = resolution.result?.value
+      if (found?.ok !== true) throw new Error(found?.reason ?? 'the click target could not be resolved')
+      const x = found.x ?? 0
+      const y = found.y ?? 0
+      // The protocol's own mouse events rather than a synthesized `click()`: a page that
+      // listens for pointer input — a canvas grid, a drag handle — never sees the latter.
+      await control.command(page.lease, 'Input.dispatchMouseEvent', {
+        type: 'mousePressed', x, y, button: 'left', clickCount: 1,
+      })
+      await control.command(page.lease, 'Input.dispatchMouseEvent', {
+        type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
+      })
+      return { clicked: found.description ?? args.selector, x, y }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'clear_network_requests',
+    description: 'Discard the console, traffic, script and WebSocket events captured for a page of the built-in '
+      + 'browser, so a listing afterwards shows only what happens next. This clears captured evidence, not cookies '
+      + 'or storage.',
+    parameters: {
+      pageIdx: { type: 'number', description: 'Page to clear, as select_page lists it. Defaults to the only page.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: { removed: { type: 'number', required: true } },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Discarded ${String(value.removed)} captured events.`,
+      }],
+    },
+    async execute(args) {
+      const { page } = await resolveTarget(control, args.pageIdx)
+      if (page === undefined) throw new Error('no page to clear')
+      return { removed: await control.clearEvents(page.lease) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'new_page',
     description: 'Open a new page in the built-in browser and return it, so it can be driven. '
       + 'Use this when no page is open, or to visit another address beside the one already showing.',
@@ -1188,6 +1262,57 @@ async function evaluateInFrame(
     expression,
     returnByValue: true,
   }) as RuntimeEvaluation
+}
+
+/** What one click resolution reports, as far as this tool reads it. */
+export interface ClickResolution {
+  readonly ok: boolean
+  readonly reason?: string
+  readonly x?: number
+  readonly y?: number
+  readonly description?: string
+}
+
+/**
+ * The expression that resolves one click target.
+ *
+ * It answers rather than throws, because each way it can fail is something the caller
+ * has to read and act on differently: a selector that matches nothing, one that matches
+ * several without an index, and an element that is present but not painted are three
+ * different mistakes with three different fixes. Coordinates come back as viewport CSS
+ * pixels, which is the space the protocol's mouse events take — and the element is
+ * scrolled into view first, so a target below the fold is still clickable.
+ * @param selector - the CSS selector to resolve.
+ * @param index - the match to use when several match.
+ * @returns an expression for `Runtime.evaluate`, resolving to a `ClickResolution`.
+ */
+export function resolveClickExpression(selector: string, index: number | undefined): string {
+  return `(() => {
+  const all = [...document.querySelectorAll(${JSON.stringify(selector)})];
+  if (all.length === 0) return { ok: false, reason: 'nothing matches that selector' };
+  const index = ${index === undefined ? 'undefined' : String(index)};
+  if (index === undefined && all.length > 1) {
+    return { ok: false, reason: 'the selector matches ' + all.length + ' elements: pass index' };
+  }
+  const element = all[index ?? 0];
+  if (element === undefined) return { ok: false, reason: 'no element at that index: ' + all.length + ' match' };
+  // Guarded because the answer still matters where scrolling is not implemented: a test
+  // environment lays nothing out, and the coordinates are what the caller came for.
+  if (typeof element.scrollIntoView === 'function') element.scrollIntoView({ block: 'center', inline: 'center' });
+  const rect = element.getBoundingClientRect();
+  const style = getComputedStyle(element);
+  if (rect.width === 0 || rect.height === 0 || style.visibility === 'hidden' || style.display === 'none'
+    || Number(style.opacity) === 0) {
+    return { ok: false, reason: 'the element is present but not painted' };
+  }
+  const text = (element.textContent ?? '').trim().slice(0, 60);
+  return {
+    ok: true,
+    x: Math.round(rect.left + rect.width / 2),
+    y: Math.round(rect.top + rect.height / 2),
+    description: element.tagName.toLowerCase() + (element.id === '' ? '' : '#' + element.id) + (text === '' ? '' : ' ' + text),
+  };
+})()`
 }
 
 /** How many entries a listing returns when the caller names no size. */
