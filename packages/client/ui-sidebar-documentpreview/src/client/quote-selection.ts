@@ -97,6 +97,19 @@ export function installQuoteShortcut(ctx: Context): void {
   // Nothing to capture where there is no window: the plugin must still register its types in
   // a non-DOM environment (and in the specs that mount it with a partial context).
   if (typeof window === 'undefined') return
+
+  // A selection made in the transcript does not survive to the key press. The composer is a
+  // Lexical editor, and it syncs the DOM selection back to its own caret — so by the time
+  // `keydown` runs, the passage the reader highlighted is no longer the window's selection,
+  // which is why quoting from the conversation did nothing while quoting from the editor's
+  // own field worked. Remembering the last non-empty selection is what keeps the gesture
+  // honest: the fallback is used only when nothing is selected at the moment of the press.
+  let remembered = ''
+  const rememberSelection = (): void => {
+    const text = selectedText()
+    if (text !== '') remembered = text
+  }
+  document.addEventListener('selectionchange', rememberSelection)
   // Captured at the page rather than registered as a command, for two reasons that are both
   // about the gesture being what it is. Shift+Space is a TYPING key with a modifier, and the
   // command registry binds letters — a Space binding is never matched, which is how this
@@ -113,15 +126,20 @@ export function installQuoteShortcut(ctx: Context): void {
       const isSpace = event.code === 'Space' || event.key === ' '
       if (!event.shiftKey || !isSpace) return
       if (event.altKey || event.ctrlKey || event.metaKey) return
-      const quote = selectedText().trim()
+      const quote = (selectedText() || remembered).trim()
       if (quote === '') return
       const sessionId = currentSession(ctx)
       if (sessionId === undefined) return
       event.preventDefault()
       event.stopPropagation()
+      // One press, one quote: a remembered passage must not be quotable twice by accident.
+      remembered = ''
       quoteInto(quote)
     }
     window.addEventListener('keydown', onKeyDown, { capture: true })
-    return () => { window.removeEventListener('keydown', onKeyDown, { capture: true }) }
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, { capture: true })
+      document.removeEventListener('selectionchange', rememberSelection)
+    }
   }, 'ui-sidebar-documentpreview: quote selection')
 }
