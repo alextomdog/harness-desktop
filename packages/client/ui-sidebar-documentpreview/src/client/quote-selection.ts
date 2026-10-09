@@ -15,6 +15,7 @@
  * put the quote in, or nothing selected. The shortcut says which, in the reader's language.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { hostFileOf } from './rpc.ts'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 
@@ -186,6 +187,11 @@ export function installQuoteShortcut(ctx: Context): void {
       if (!event.shiftKey || !isSpace) return
       if (event.altKey || event.ctrlKey || event.metaKey) return
       const quote = (selectedText() || remembered).trim()
+      // Which file this came from, read from the tab the reader is looking at rather than
+      // guessed from what the header happens to display: the tab knows its own address, and the
+      // address is what a session file is named by.
+      const active = ctx.get('sidebarRight')?.active()
+      const origin = active === undefined ? undefined : hostFileOf(active.contentId).path
       if (quote === '') return
       const sessionId = currentSession(ctx)
       if (sessionId === undefined) return
@@ -193,7 +199,7 @@ export function installQuoteShortcut(ctx: Context): void {
       event.stopPropagation()
       // One press, one quote: a remembered passage must not be quotable twice by accident.
       remembered = ''
-      quoteInto(quote)
+      quoteInto(quote, origin === undefined || origin === '' ? undefined : '@' + origin)
     }
     window.addEventListener('keydown', onKeyDown, { capture: true })
     return () => {
