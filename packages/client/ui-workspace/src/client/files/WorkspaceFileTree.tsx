@@ -534,6 +534,14 @@ export function WorkspaceFileTree({
                   beginRename(row)
                   return
                 }
+                // Delete asks the same question the menu asks, so the keyboard cannot remove
+                // anything the pointer would have had to confirm first.
+                if ((event.key === 'Delete' || event.key === 'Backspace') && deleteEntry !== undefined) {
+                  if (event.key === 'Backspace' && !directory) return
+                  event.preventDefault()
+                  setConfirmDelete(row)
+                  return
+                }
                 if (event.key !== 'Enter' && event.key !== ' ') return
                 event.preventDefault()
                 setSelected(row.path)
