@@ -15,6 +15,7 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent, MouseEvent } from 'react'
+import type { DragEvent } from 'react'
 import clsx from 'clsx'
 import {
   IconPlusOutlineMedium, IconWarningOutlineRegular, Toast, Tooltip,
@@ -376,6 +377,23 @@ export const InputBar = memo(function InputBar({
         ref={cardRef}
         className={clsx(css.card, workspaceTrigger && css.cardWorkspaceTrigger)}
         data-composer-card
+        // The whole box takes the drop, not only the text surface inside it: a reader aims at
+        // the thing they can see, and that is the card. The drag is claimed only while somebody
+        // will use it, so a drop meant for something behind the composer still gets there.
+        {...insertReferences === undefined ? {} : {
+          onDragOver: (event: DragEvent<HTMLDivElement>) => {
+            if (event.dataTransfer === null) return
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'copy'
+          },
+          onDrop: (event: DragEvent<HTMLDivElement>) => {
+            const text = event.dataTransfer?.getData('text/plain') ?? ''
+            const paths = text.split('\n').map(line => line.trim()).filter(line => line !== '')
+            if (paths.length === 0) return
+            event.preventDefault()
+            insertReferences(paths)
+          },
+        }}
         onClick={workspaceTrigger ? onRequestWorkspace : undefined}
         onPointerDown={workspaceTrigger ? (e) => { e.stopPropagation() } : undefined}
       >
@@ -414,7 +432,6 @@ export const InputBar = memo(function InputBar({
           onWorkspaceKeyDown={onWorkspaceKeyDown}
           hint={hint}
           showPlaceholder={draft === '' && attachments.length === 0 && !claimActive}
-          {...insertReferences === undefined ? {} : { onDropPaths: (paths: readonly string[]) => { insertReferences(paths) } }}
         />
         <div ref={rowRef} className={css.row}>
           <div className={css.tools} hidden={activity}>
