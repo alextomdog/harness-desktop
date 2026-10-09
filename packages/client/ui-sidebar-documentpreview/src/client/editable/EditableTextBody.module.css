@@ -76,10 +76,12 @@
   user-select: none;
 }
 
-/* Pinned to its line's left edge, outside the text's inset, so it never wraps with it. */
+/* Pinned inside its line, but pushed BACK into the inset the text does not use: a line's own
+   box starts where its text starts, so an offset of zero prints the number on top of the first
+   character — which is exactly what it did. Negative is what puts it in the gutter. */
 .lineNumber {
   position: absolute;
-  left: 0;
+  left: calc(-1 * (var(--dsh-editor-gutter) + 8px));
   width: var(--dsh-editor-gutter);
   color: var(--dsh-text-tertiary, #9a9a9a);
   text-align: right;
