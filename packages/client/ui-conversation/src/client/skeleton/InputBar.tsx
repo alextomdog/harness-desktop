@@ -421,6 +421,11 @@ export const InputBar = memo(function InputBar({
           // make the reader's own words out of someone else's.
           <div className={css.reply} data-composer-reply>
             <span className={css.replyMark} aria-hidden="true">↰</span>
+            {reply.lead !== undefined && reply.lead !== '' && (
+              // What the passage came from, when anything does: the card says where a quote is
+              // from as well as what it is, which is the whole of what makes it checkable.
+              <span className={css.replyLead} data-composer-reply-lead>{reply.lead}</span>
+            )}
             <span className={css.replyText}>{reply.text}</span>
             <button
               type="button"

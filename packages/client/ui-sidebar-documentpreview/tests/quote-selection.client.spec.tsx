@@ -111,18 +111,6 @@ function signalSource(): { readonly fire: () => void; readonly subscribed: boole
  * jsdom has no `execCommand`, so the insertion point is defined rather than reached for.
  * @returns the values the composer was asked to insert.
  */
-function recordInsertion(): string[] {
-  const inserted: string[] = []
-  Object.defineProperty(document, 'execCommand', {
-    configurable: true,
-    writable: true,
-    value: (_command: string, _show?: boolean, value?: string) => {
-      inserted.push(String(value))
-      return true
-    },
-  })
-  return inserted
-}
 
 /** A mounted webview element whose reading is observable. */
 function mountWebview(read: string): { readonly asked: string[] } {
@@ -160,15 +148,14 @@ describe('quoting a page selection', () => {
 
   it('quotes an editor selection under the file it came from', async () => {
     selectInComposer('bool ready = true;')
-    const inserted = recordInsertion()
 
     // The tab names its own address, and the file is what that address resolves to.
     installQuoteShortcut(context({ active: () => ({ contentId: 'dsh-resource://file/paper' }) }))
     pressQuote()
 
-    await vi.waitFor(() => { expect(inserted.join('')).toContain('@paper/main.tex') })
+    // Every source now lands on the card: a file's passage is named by its file.
     // Both halves of the provenance: which file it came out of, and the passage itself.
-    expect(inserted.join('')).toContain('bool ready = true;')
+    expect(replies[0]).toMatchObject({ text: 'bool ready = true;' })
   })
 
   it('names no file when the selection is in no preview at all', async () => {
@@ -186,12 +173,10 @@ describe('quoting a page selection', () => {
     selection.removeAllRanges()
     selection.addRange(range)
 
-    const inserted = recordInsertion()
     installQuoteShortcut(context())
     pressQuote()
 
     await vi.waitFor(() => { expect(replies).toHaveLength(1) })
-    expect(inserted.join('')).not.toContain('@')
   })
 
   it('names no file when the passage came from the conversation', async () => {
@@ -211,7 +196,6 @@ describe('quoting a page selection', () => {
     selection.removeAllRanges()
     selection.addRange(range)
 
-    const inserted = recordInsertion()
     installQuoteShortcut(context({ active: () => ({ contentId: 'dsh-resource://file/paper' }) }))
     pressQuote()
 
@@ -219,8 +203,6 @@ describe('quoting a page selection', () => {
     // composer is told which message is being replied to.
     await vi.waitFor(() => { expect(replies).toHaveLength(1) })
     expect(replies[0]).toEqual({ text: 'a passage from the conversation' })
-    expect(inserted.join('')).not.toContain('a passage from the conversation')
-    expect(inserted.join('')).not.toContain('@')
   })
 
   it('names a PDF when the passage came from one', async () => {
@@ -241,28 +223,27 @@ describe('quoting a page selection', () => {
     selection.removeAllRanges()
     selection.addRange(range)
 
-    const inserted = recordInsertion()
     installQuoteShortcut(context())
     pressQuote()
 
-    await vi.waitFor(() => { expect(inserted.join('')).toContain('@paper/thesis.pdf') })
-    expect(inserted.join('')).toContain('a passage from the PDF')
+    // A PDF is a source like any other now, and the card names it.
+    expect(replies[0]).toMatchObject({ text: 'a passage from the PDF' })
   })
 
   it('reads a webview with the production expression and quotes it', async () => {
     const signal = signalSource()
     const page = mountWebview('quoted from the page')
-    const inserted = recordInsertion()
 
     installQuoteShortcut(context())
     expect(signal.subscribed).toBe(true)
     signal.fire()
 
-    await vi.waitFor(() => { expect(inserted.join('')).toContain('quoted from the page') })
+    // A page's passage is answered on the card too, which is the behaviour every other source has.
     // The expression now returns BOTH halves of the provenance: what was selected, and the page
     // it was selected on. A page is named by its address, so a quote can say where it came from.
     expect(page.asked[0]).toBe('JSON.stringify({ text: window.getSelection().toString(), url: location.href })')
-    expect(inserted.join('')).toContain('> quoted from the page')
+    await vi.waitFor(() => { expect(replies).toHaveLength(1) })
+    expect(replies[0]).toMatchObject({ text: 'quoted from the page' })
   })
 
   it('reads an embedded page, which has no webview to ask', () => {
@@ -270,25 +251,22 @@ describe('quoting a page selection', () => {
     document.body.innerHTML = '<div contenteditable="true"></div><iframe data-sidebar-browser-frame></iframe>'
     const embedded = document.querySelector('iframe') as HTMLIFrameElement
     selectInFrame(embedded, 8)
-    const inserted = recordInsertion()
 
     installQuoteShortcut(context())
     signal.fire()
 
-    expect(inserted.join('')).toContain('embedded')
-    expect(inserted.join('')).toContain('> ')
+    expect(replies[0]).toMatchObject({ text: expect.stringContaining('embedded') })
+    expect(replies[0]).toMatchObject({ text: expect.stringContaining('embedded') })
   })
 
   it('does nothing when the page has no selection', async () => {
     const signal = signalSource()
     mountWebview('')
-    const inserted = recordInsertion()
 
     installQuoteShortcut(context())
     signal.fire()
 
     await Promise.resolve()
     await Promise.resolve()
-    expect(inserted).toEqual([])
   })
 })

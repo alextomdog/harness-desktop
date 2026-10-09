@@ -463,3 +463,12 @@
 .replyClear:hover {
   opacity: 1;
 }
+/* Where the passage came from: quieter than the passage, and never the thing that wraps. */
+.replyLead {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+}

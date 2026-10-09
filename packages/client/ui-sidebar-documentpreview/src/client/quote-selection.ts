@@ -76,6 +76,37 @@ function quoteInto(quote: string, lead?: string): void {
 }
 
 /**
+ * Put one passage where every other quote goes: on the card above the input.
+ *
+ * ONE behaviour for every selection. A passage taken from the conversation, from a file, a PDF or
+ * a page is something the reader is answering or quoting, and the composer already knows how to
+ * show that — pouring it into the draft would make the reader's own words out of someone else's
+ * and would show the reader a wall of text where a card belongs.
+ *
+ * The draft is still used when there is no composer to talk to, so a selection always lands
+ * somewhere rather than being swallowed.
+ * @param ctx - the preview plugin's context.
+ * @param quote - the selected text.
+ * @param lead - what it came from: a file's `@path`, or a page's address.
+ */
+function quoteOrInto(ctx: Context, quote: string, lead?: string): void {
+  const sessionId = currentSession(ctx)
+  const conversation = sessionId === undefined ? undefined : ctx.get('conversation')
+  const sessions = ctx.get('sessions')
+  const binding = sessionId === undefined || sessions === undefined
+    ? undefined
+    : sessions.binding(sessionId as Parameters<typeof sessions.binding>[0])
+  if (conversation !== undefined && binding !== undefined) {
+    conversation.input.setReply(
+      binding,
+      lead === undefined || lead === '' ? { text: quote } : { text: quote, lead },
+    )
+    return
+  }
+  quoteInto(quote, lead)
+}
+
+/**
  * Register the quote gesture.
  * @param ctx - the preview plugin's context.
  */
@@ -160,7 +191,7 @@ export function installQuoteShortcut(ctx: Context): void {
             } catch { text = packed }
           }
           const lead = typeof url === 'string' && url !== '' ? url : undefined
-          if (typeof text === 'string' && text.trim() !== '') quoteInto(text, lead)
+          if (typeof text === 'string' && text.trim() !== '') quoteOrInto(ctx, text, lead)
         }).catch(() => undefined)
         return
       }
@@ -171,7 +202,7 @@ export function installQuoteShortcut(ctx: Context): void {
         // Same-origin pages are readable in place, address included; a cross-origin one throws
         // on the first property read and is left alone rather than half-read.
         const url = embedded.contentWindow?.location.href ?? ''
-        if (text.trim() !== '') quoteInto(text, url === '' ? undefined : url)
+        if (text.trim() !== '') quoteOrInto(ctx, text, url === '' ? undefined : url)
       } catch {
         // A cross-origin page owns its selection; there is nothing this window may read.
       }
@@ -203,32 +234,11 @@ export function installQuoteShortcut(ctx: Context): void {
       // A passage taken from the CONVERSATION is not a quotation to paste: it is the message the
       // reader is answering, and the composer already knows how to show that. So the gesture sets a
       // reply rather than writing text, and the reader's own words stay their own.
-      if (address === '') {
-        const conversation = ctx.get('conversation')
-        const sessions = ctx.get('sessions')
-        // The id was read out of this service's own snapshot, so the brand is already true of it;
-        // taking the parameter type from the service keeps that a narrowing rather than a claim.
-        const binding = sessions === undefined
-          ? undefined
-          : sessions.binding(sessionId as Parameters<typeof sessions.binding>[0])
-        if (conversation !== undefined && binding !== undefined) {
-          // setReply lives on the input resolver beside requestDraftInitialization, not on
-          // the controller: the controller is what get(conversation) hands back, and reaching
-          // for the method there is what threw.
-          // The call goes through the resolver, which is where this method lives.
-          conversation.input.setReply(binding, { text: quote })
-          event.preventDefault()
-          event.stopPropagation()
-          // One press, one quote: a remembered passage must not be quotable twice by accident.
-          remembered = ''
-          return
-        }
-      }
       event.preventDefault()
       event.stopPropagation()
       // One press, one quote: a remembered passage must not be quotable twice by accident.
       remembered = ''
-      quoteInto(quote, origin === undefined || origin === '' ? undefined : '@' + origin)
+      quoteOrInto(ctx, quote, origin === undefined || origin === '' ? undefined : '@' + origin)
     }
     window.addEventListener('keydown', onKeyDown, { capture: true })
     return () => {
