@@ -220,6 +220,8 @@ export interface SessionInputResolver {
    * @throws when binding is not the currently retained Session generation.
    */
   requestDraftInitialization(binding: SessionBinding, options: DraftInitializationOptions): DraftInitializationResult
+  /** Set one retained session's reply target, or clear it. */
+  setReply(binding: SessionBinding, target: ReplyTarget | null): void
 }
 
 /** Initial text for a target Session; attachments remain under their existing owner. */

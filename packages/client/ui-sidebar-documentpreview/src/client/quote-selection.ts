@@ -212,7 +212,7 @@ export function installQuoteShortcut(ctx: Context): void {
           ? undefined
           : sessions.binding(sessionId as Parameters<typeof sessions.binding>[0])
         if (conversation !== undefined && binding !== undefined) {
-          conversation.input.for(binding).replyTo({ text: quote })
+          conversation.setReply(binding, { text: quote })
           event.preventDefault()
           event.stopPropagation()
           // One press, one quote: a remembered passage must not be quotable twice by accident.

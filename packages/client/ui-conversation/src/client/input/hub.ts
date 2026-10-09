@@ -4,6 +4,7 @@
  * catalog subscription. Saved drafts enter the model before the first lookup
  * returns; Session-scope disposal releases the shell and its resources.
  */
+import type { ReplyTarget } from '../contract/input.ts'
 import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
 import type { ModelSelectionProjection } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { PlanProjection } from '@deepseek-ai/dsh-plan-mode/types'
@@ -84,6 +85,22 @@ export class InputHub implements SessionInputResolver {
       throw new Error('conversation.input.requestDraftInitialization requires a retained Session binding')
     }
     return this.shellFor(binding).requestDraftInitialization(options)
+  }
+
+  /**
+   * Point one retained session's draft at the message it answers, or clear that.
+   *
+   * A caller outside this package holds a BINDING, not a session scope, so this is the door for
+   * it — the same door `requestDraftInitialization` opens, checked the same way. Going through
+   * `for(actx)` with a binding is a mistake the runtime is right to refuse.
+   * @param binding - a retained session binding.
+   * @param target - the excerpt being answered, or null to clear.
+   */
+  setReply(binding: SessionBinding, target: ReplyTarget | null): void {
+    if (this.sessions().binding(binding.sessionId) !== binding) {
+      throw new Error('conversation.input.setReply requires a retained Session binding')
+    }
+    this.shellFor(binding).replyTo(target)
   }
 
   /**
