@@ -212,7 +212,11 @@ export function installQuoteShortcut(ctx: Context): void {
           ? undefined
           : sessions.binding(sessionId as Parameters<typeof sessions.binding>[0])
         if (conversation !== undefined && binding !== undefined) {
-          conversation.setReply(binding, { text: quote })
+          // setReply lives on the input resolver beside requestDraftInitialization, not on
+          // the controller: the controller is what get(conversation) hands back, and reaching
+          // for the method there is what threw.
+          // The call goes through the resolver, which is where this method lives.
+          conversation.input.setReply(binding, { text: quote })
           event.preventDefault()
           event.stopPropagation()
           // One press, one quote: a remembered passage must not be quotable twice by accident.

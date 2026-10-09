@@ -41,7 +41,7 @@ function context(sidebarRight?: unknown): never {
   }
   // What the gesture asked the composer to answer — the whole of the conversation case.
   const conversation = {
-    setReply: (_binding: unknown, target: unknown) => { replies.push(target) },
+    input: { setReply: (_binding: unknown, target: unknown) => { replies.push(target) } },
   }
   return {
     // The cleanup is KEPT and run after each case: a listener that outlives its case keeps
