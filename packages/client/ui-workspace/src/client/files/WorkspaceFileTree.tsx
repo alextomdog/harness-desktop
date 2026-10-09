@@ -257,7 +257,20 @@ export function WorkspaceFileTree({
     void load('', lifetime.current.signal)
   }, [load])
 
-  const rows = useMemo(() => flatten(directories, expanded), [directories, expanded])
+  const allRows = useMemo(() => flatten(directories, expanded), [directories, expanded])
+  // Search shows what it matched, wherever it is: filtering the EXPANDED tree would hide every
+  // hit inside a folder the reader had closed, which is the one place they are least likely to
+  // look. A query therefore flattens everything and keeps the matching rows; an empty query is
+  // the tree exactly as the reader left it, collapse and all.
+  const [query, setQuery] = useState('')
+  const [searching, setSearching] = useState(false)
+  const searchRef = useRef<HTMLInputElement | null>(null)
+  const matches = query.trim().toLowerCase()
+  const rows = useMemo(() => {
+    if (matches === '') return allRows
+    const everything = new Set(directories.keys())
+    return flatten(directories, everything).filter(row => row.name.toLowerCase().includes(matches))
+  }, [allRows, matches, directories])
   /** Folding this section empties its rows, the same way folding a group does. */
   const shown = open ? rows : []
   /** The row the inline name editor replaces, when one is open in place. */
@@ -413,7 +426,42 @@ export function WorkspaceFileTree({
             : <IconChevronRightOutlineRegular size={12} />}
           <span>{t('section.files')}</span>
         </button>
+        {searching && (
+          <input
+            ref={searchRef}
+            className={css.search}
+            data-files-search
+            type="search"
+            value={query}
+            placeholder={t('files.searchPlaceholder')}
+            aria-label={t('files.search')}
+            onChange={(event) => { setQuery(event.target.value) }}
+            onKeyDown={(event) => {
+              // Escape is how a reader leaves a search they started by accident.
+              if (event.key === 'Escape') { setQuery(''); setSearching(false) }
+            }}
+          />
+        )}
         <span className={css.headerActions}>
+          <button
+            type="button"
+            className={css.toolbarButton}
+            aria-label={t('files.search')}
+            title={t('files.search')}
+            data-files-search-open
+            onClick={() => {
+              setSearching(true)
+              // The field exists only once it is asked for, so the focus waits for the render.
+              requestAnimationFrame(() => { searchRef.current?.focus() })
+            }}
+          >
+            {/* An inline magnifier: the icon set this file draws from has no search glyph, and
+                borrowing an unrelated one would say the wrong thing about what the button does. */}
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              <line x1="10.4" y1="10.4" x2="14" y2="14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </button>
           <button
             type="button"
             className={css.toolbarButton}
