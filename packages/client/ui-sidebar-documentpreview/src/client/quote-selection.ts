@@ -193,13 +193,15 @@ export function installQuoteShortcut(ctx: Context): void {
       // Which surface the selection is actually IN decides whether a file may be named at all.
       // Quoting the conversation while a file happens to be open in the sidebar is not quoting that
       // file, and putting its name in the draft would be a claim the reader never made.
+      // WHICH preview the selection is in decides the file, not which tab the sidebar happens to
+      // have active: every preview carries its own address, so a passage taken from a PDF is named
+      // by that PDF, one taken from an office document by that document, and one taken from the
+      // conversation by nothing at all.
       const anchor = window.getSelection()?.anchorNode ?? null
       const holder = anchor instanceof Element ? anchor : anchor?.parentElement ?? null
-      const inEditor = holder !== null && holder.closest('[data-textpreview-editor]') !== null
-      const sidebar = inEditor ? ctx.get('sidebarRight') : undefined
-      // Guarded by typeof, not merely by presence: a service that exists WITHOUT this method would
-      const active = typeof sidebar?.active === 'function' ? sidebar.active() : undefined
-      const origin = active === undefined ? undefined : hostFileOf(active.contentId).path
+      const preview = holder?.closest('[data-textpreview-url]') ?? null
+      const address = preview?.getAttribute('data-textpreview-url') ?? ''
+      const origin = address === '' ? undefined : hostFileOf(address).path
       if (quote === '') return
       const sessionId = currentSession(ctx)
       if (sessionId === undefined) return

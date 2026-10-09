@@ -18,7 +18,7 @@ import { installQuoteShortcut } from '../src/client/quote-selection.ts'
 const cleanups: Array<() => void> = []
 
 vi.mock('../src/client/rpc.ts', () => ({
-  hostFileOf: (address: string) => ({ sessionId: 's1', path: 'paper/main.tex', address }),
+  hostFileOf: (address: string) => ({ sessionId: 's1', path: address.split('/file/')[1] ?? 'paper/main.tex', address }),
 }))
 
 /**
@@ -57,8 +57,9 @@ function context(sidebarRight?: unknown): never {
 function selectInComposer(passage: string): HTMLElement {
   const composer = document.createElement('div')
   composer.setAttribute('contenteditable', 'true')
-  // The editor's own hook: a file may be named only for a selection that is actually IN it.
-  composer.setAttribute('data-textpreview-editor', '')
+  // Every preview carries its own address, which is what names the file a passage came from —
+  // the same hook a PDF or an office document is rendered under.
+  composer.setAttribute('data-textpreview-url', 'dsh-resource://file/paper/main.tex')
   composer.textContent = passage
   document.body.append(composer)
   const range = document.createRange()
@@ -157,13 +158,23 @@ describe('quoting a page selection', () => {
     expect(inserted.join('')).toContain('bool ready = true;')
   })
 
-  it('quotes an editor selection without a file when no tab is active', async () => {
-    selectInComposer('nothing names me')
-    const inserted = recordInsertion()
+  it('names no file when the selection is in no preview at all', async () => {
+    // A surface that is not a preview names nothing: naming a wrong file would be worse than
+    // naming none, because a quote that lies about its source cannot be checked at all.
+    const bare = document.createElement('div')
+    bare.textContent = 'nothing names me'
+    document.body.append(bare)
+    const composer = document.createElement('div')
+    composer.setAttribute('contenteditable', 'true')
+    document.body.append(composer)
+    const range = document.createRange()
+    range.selectNodeContents(bare)
+    const selection = window.getSelection() as Selection
+    selection.removeAllRanges()
+    selection.addRange(range)
 
-    // No active tab means no file to name — and naming a wrong one is worse than naming none,
-    // because a quote that lies about its source cannot be checked at all.
-    installQuoteShortcut(context({}))
+    const inserted = recordInsertion()
+    installQuoteShortcut(context())
     pressQuote()
 
     await vi.waitFor(() => { expect(inserted.join('')).toContain('nothing names me') })
@@ -193,6 +204,32 @@ describe('quoting a page selection', () => {
 
     await vi.waitFor(() => { expect(inserted.join('')).toContain('a passage from the conversation') })
     expect(inserted.join('')).not.toContain('@')
+  })
+
+  it('names a PDF when the passage came from one', async () => {
+    // A PDF is read in its own surface, and a passage quoted out of it has to say which PDF — the
+    // reader cannot check a quote against a document the draft never names.
+    const page = document.createElement('div')
+    page.setAttribute('data-textpreview-url', 'dsh-resource://file/paper/thesis.pdf')
+    const text = document.createElement('p')
+    text.textContent = 'a passage from the PDF'
+    page.append(text)
+    document.body.append(page)
+    const composer = document.createElement('div')
+    composer.setAttribute('contenteditable', 'true')
+    document.body.append(composer)
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    const selection = window.getSelection() as Selection
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const inserted = recordInsertion()
+    installQuoteShortcut(context())
+    pressQuote()
+
+    await vi.waitFor(() => { expect(inserted.join('')).toContain('@paper/thesis.pdf') })
+    expect(inserted.join('')).toContain('a passage from the PDF')
   })
 
   it('reads a webview with the production expression and quotes it', async () => {
