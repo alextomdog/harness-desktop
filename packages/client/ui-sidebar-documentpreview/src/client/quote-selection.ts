@@ -190,7 +190,9 @@ export function installQuoteShortcut(ctx: Context): void {
       // Which file this came from, read from the tab the reader is looking at rather than
       // guessed from what the header happens to display: the tab knows its own address, and the
       // address is what a session file is named by.
-      const active = ctx.get('sidebarRight')?.active()
+      const sidebar = ctx.get('sidebarRight')
+      // Guarded by typeof, not merely by presence: a service that exists WITHOUT this method would
+      const active = typeof sidebar?.active === 'function' ? sidebar.active() : undefined
       const origin = active === undefined ? undefined : hostFileOf(active.contentId).path
       if (quote === '') return
       const sessionId = currentSession(ctx)

@@ -11,12 +11,68 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { installQuoteShortcut } from '../src/client/quote-selection.ts'
 
-/** A context with only what the gesture's own path touches. */
-function context(): never {
+// What the editor case is about is that a quote NAMES the file it came from — not how an address
+// is spelled, which the file-reference grammar already owns. So the parser is stubbed and this
+// suite stays about the gesture.
+/** Cleanups of every effect registered so far, run between cases. */
+const cleanups: Array<() => void> = []
+
+vi.mock('../src/client/rpc.ts', () => ({
+  hostFileOf: (address: string) => ({ sessionId: 's1', path: 'paper/main.tex', address }),
+}))
+
+/**
+ * A context with only what the gesture's own path touches.
+ *
+ * The row carries its OWN `id`, because that is what the gesture resolves a session to — a fake
+ * without one makes `currentSession` return undefined and the gesture return in silence, which
+ * is exactly the failure mode its own comment warns about.
+ * @param sidebarRight - the sidebar service, when the case needs an active tab.
+ */
+function context(sidebarRight?: unknown): never {
+  const row = { id: 's1', retainedBy: { mainView: 1 } }
+  const sessions = { list: { getSnapshot: () => ({ byId: { s1: row } }) } }
   return {
-    effect: (run: () => () => void) => { run(); return () => undefined },
-    get: () => undefined,
+    // The cleanup is KEPT and run after each case: a listener that outlives its case keeps
+    // answering the next case's press with the previous case's tab, which is exactly how one
+    // case's file name turned up in another case's draft.
+    effect: (run: () => () => void) => { cleanups.push(run()) },
+    get: (name: string) => {
+      if (name === 'sidebarRight') return sidebarRight
+      if (name === 'sessions') return sessions
+      return undefined
+    },
   } as never
+}
+
+/**
+ * Focus the composer holding one passage, selected whole.
+ *
+ * The composer IS the contenteditable the gesture inserts into, so a fixture without one has
+ * nowhere to put a passage and would only be measuring that absence. Its text is selected as a
+ * DOM range, which is how a selection outside a form field reaches this path.
+ * @param passage - the text to select.
+ * @returns the composer.
+ */
+function selectInComposer(passage: string): HTMLElement {
+  const composer = document.createElement('div')
+  composer.setAttribute('contenteditable', 'true')
+  composer.textContent = passage
+  document.body.append(composer)
+  const range = document.createRange()
+  range.selectNodeContents(composer)
+  const selection = window.getSelection() as Selection
+  selection.removeAllRanges()
+  selection.addRange(range)
+  return composer
+}
+
+/** Press the gesture's key from wherever focus is, the way a real press travels. */
+function pressQuote(): void {
+  const target = document.activeElement ?? document.body
+  target.dispatchEvent(new KeyboardEvent('keydown', {
+    key: ' ', code: 'Space', shiftKey: true, bubbles: true, cancelable: true,
+  }))
 }
 
 /** A signal source standing in for the preload bridge, capturing its listener. */
@@ -82,7 +138,34 @@ describe('quoting a page selection', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    while (cleanups.length > 0) cleanups.pop()?.()
     document.body.innerHTML = ''
+  })
+
+  it('quotes an editor selection under the file it came from', async () => {
+    selectInComposer('bool ready = true;')
+    const inserted = recordInsertion()
+
+    // The tab names its own address, and the file is what that address resolves to.
+    installQuoteShortcut(context({ active: () => ({ contentId: 'dsh-resource://file/paper' }) }))
+    pressQuote()
+
+    await vi.waitFor(() => { expect(inserted.join('')).toContain('@paper/main.tex') })
+    // Both halves of the provenance: which file it came out of, and the passage itself.
+    expect(inserted.join('')).toContain('bool ready = true;')
+  })
+
+  it('quotes an editor selection without a file when no tab is active', async () => {
+    selectInComposer('nothing names me')
+    const inserted = recordInsertion()
+
+    // No active tab means no file to name — and naming a wrong one is worse than naming none,
+    // because a quote that lies about its source cannot be checked at all.
+    installQuoteShortcut(context({}))
+    pressQuote()
+
+    await vi.waitFor(() => { expect(inserted.join('')).toContain('nothing names me') })
+    expect(inserted.join('')).not.toContain('@')
   })
 
   it('reads a webview with the production expression and quotes it', async () => {
