@@ -320,6 +320,8 @@ export class SessionInputShell implements SessionInput {
    * @param attachmentIds - admitted attachment ids to remove from this draft.
    */
   commitSend(attachmentIds: readonly DraftAttachmentId[]): void {
+    // The message was answered; that is over now, and the draft is the reader's again.
+    this.reply = null
     const submitted = new Set(attachmentIds)
     this.attachmentIds = this.attachmentIds.filter(id => !submitted.has(id))
     this.dispatchRun(({ type: 'send-committed' }))
@@ -704,7 +706,7 @@ export class SessionInputShell implements SessionInput {
       this.failedRestoreRev = undefined
     }
     if (occurrences.length === 0) {
-      this.settleSink(attempt, this.deps.defaultSink(draft.trim(), attachmentIds, mode, attempt.signal))
+      this.settleSink(attempt, this.deps.defaultSink(this.outgoing(draft.trim()), attachmentIds, mode, attempt.signal))
       return
     }
     const inputTriggers = this.deps.inputTriggers?.()
@@ -728,7 +730,7 @@ export class SessionInputShell implements SessionInput {
           cursor = part.offset + part.length
         }
         out += draft.slice(cursor)
-        this.settleSink(attempt, this.deps.defaultSink(out.trim(), attachmentIds, mode, attempt.signal))
+        this.settleSink(attempt, this.deps.defaultSink(this.outgoing(out.trim()), attachmentIds, mode, attempt.signal))
       },
       (error: unknown) => {
         if (this.dead(attempt)) return
@@ -879,6 +881,22 @@ export class SessionInputShell implements SessionInput {
   /** Late-settlement guard: superseded attempts and disposed facades drop silently. */
   private dead(attempt: SubmitAttempt): boolean {
     return this.disposed || attempt.signal.aborted
+  }
+
+  /**
+   * The text to send: the reader's own words, under the message they answer.
+   *
+   * A PREFIX, not a structured reply: the transport this package sends through takes text and
+   * attachments, and inventing a reply relation it cannot carry would be a shape the other end
+   * never agreed to. A quotation in the text is something every reader and every model already
+   * understands, and it is honest about what it is.
+   * @param text - the reader's draft.
+   * @returns what to send.
+   */
+  private outgoing(text: string): string {
+    if (this.reply === null) return text
+    const quoted = this.reply.text.split('\n').map(line => `> ${line}`).join('\n')
+    return `${quoted}\n\n${text}`
   }
 
   private compose(): InputState {

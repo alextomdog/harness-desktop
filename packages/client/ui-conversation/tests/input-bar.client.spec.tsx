@@ -1472,6 +1472,23 @@ describe('decorations', () => {
     expect(shell.snapshot.occurrences[0]).toMatchObject({ offset: 3, length: 3 })
   })
 
+  it('sends the message being answered with the answer', () => {
+    const { button, sink, shell } = bench({ draft: '我的看法' })
+    act(() => { shell.replyTo({ text: '为什么推荐这一版？' }) })
+    act(() => { button.click() })
+
+    // The reply travels as a quotation in front of the reader's own words: the transport carries
+    // text and attachments, so this is a prefix rather than a relation it cannot carry.
+    expect(sink).toHaveBeenCalledWith('> 为什么推荐这一版？\n\n我的看法', [], 'queue', expect.any(AbortSignal))
+  })
+
+  it('sends the draft unchanged when it answers nothing', () => {
+    const { button, sink } = bench({ draft: '平实的消息' })
+    act(() => { button.click() })
+    // No reply, no prefix — the outgoing text is exactly what was typed.
+    expect(sink).toHaveBeenCalledWith('平实的消息', [], 'queue', expect.any(AbortSignal))
+  })
+
   it('shows the message a draft answers, and takes it off', () => {
     const { view, shell } = bench()
     // Nothing to answer yet: a reply card is not decoration, it only exists when there is one.
