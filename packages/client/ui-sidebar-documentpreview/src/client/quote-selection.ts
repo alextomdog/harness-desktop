@@ -101,6 +101,11 @@ function quoteOrInto(ctx: Context, quote: string, lead?: string): void {
       binding,
       lead === undefined || lead === '' ? { text: quote } : { text: quote, lead },
     )
+    // Land the reader where they were going. They pressed the gesture to say something ABOUT that
+    // passage, and the very next thing they do is type: leaving focus on the document they just
+    // quoted means their first keystroke goes into the wrong place.
+    const composer = document.querySelector<HTMLElement>('[data-composer-input], [contenteditable=true]')
+    composer?.focus()
     return
   }
   quoteInto(quote, lead)

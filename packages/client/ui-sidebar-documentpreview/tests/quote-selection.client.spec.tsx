@@ -147,7 +147,7 @@ describe('quoting a page selection', () => {
   })
 
   it('quotes an editor selection under the file it came from', async () => {
-    selectInComposer('bool ready = true;')
+    const composer = selectInComposer('bool ready = true;')
 
     // The tab names its own address, and the file is what that address resolves to.
     installQuoteShortcut(context({ active: () => ({ contentId: 'dsh-resource://file/paper' }) }))
@@ -156,6 +156,9 @@ describe('quoting a page selection', () => {
     // Every source now lands on the card: a file's passage is named by its file.
     // Both halves of the provenance: which file it came out of, and the passage itself.
     expect(replies[0]).toMatchObject({ text: 'bool ready = true;' })
+    // Put where they were going: the next thing the reader does is type, and focus left
+    // on the document they just quoted would send the first keystroke somewhere else.
+    expect(document.activeElement).toBe(composer)
   })
 
   it('names no file when the selection is in no preview at all', async () => {
