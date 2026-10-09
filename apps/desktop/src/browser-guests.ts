@@ -494,7 +494,14 @@ export class DesktopBrowserGuests {
   }
 
   private configureSession(browserSession: Session): void {
-    browserSession.setPermissionRequestHandler((_contents, _permission, callback) => { callback(false) })
+    // A page in the sidebar may copy for the reader — "copy to clipboard" is an ordinary page
+    // action, and refusing it made a page's own button throw. Nothing else is granted: the
+    // denial is what keeps a page from asking for a camera, a microphone or a location through
+    // a panel the reader did not open as a browser. `clipboard-sanitized-write` is Chromium's
+    // name for the write a page performs on the reader's own click.
+    const allowed = (permission: string): boolean => permission === 'clipboard-sanitized-write'
+    browserSession.setPermissionRequestHandler((_contents, permission, callback) => { callback(allowed(permission)) })
+    browserSession.setPermissionCheckHandler((_contents, permission) => allowed(permission))
     browserSession.setPermissionCheckHandler(() => false)
     browserSession.setDevicePermissionHandler(() => false)
     browserSession.setDisplayMediaRequestHandler((_request, callback) => { callback({}) })
