@@ -167,7 +167,10 @@ export function installQuoteShortcut(ctx: Context): void {
       if (!(embedded instanceof HTMLIFrameElement)) return
       try {
         const text = embedded.contentWindow?.getSelection()?.toString() ?? ''
-        if (text.trim() !== '') quoteInto(text)
+        // Same-origin pages are readable in place, address included; a cross-origin one throws
+        // on the first property read and is left alone rather than half-read.
+        const url = embedded.contentWindow?.location.href ?? ''
+        if (text.trim() !== '') quoteInto(text, url === '' ? undefined : url)
       } catch {
         // A cross-origin page owns its selection; there is nothing this window may read.
       }
