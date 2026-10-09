@@ -255,6 +255,8 @@ export interface InputActions {
   addAttachments(ids: readonly DraftAttachmentId[]): boolean
   /** Remove one browser-owned attachment id; busy admission phases refuse. */
   removeAttachment(id: DraftAttachmentId): void
+  /** Point the draft at the message it answers, or clear that. Busy phases refuse. */
+  replyTo?: (target: ReplyTarget | null) => void
   /** Drop ids whose browser-owned objects no longer exist. */
   pruneAttachments(ids: readonly DraftAttachmentId[]): void
   /** Enter submission (adjudication / claim transaction / default sink inside). */
@@ -272,6 +274,11 @@ export interface InputNotice {
 export type ConsumeTokenGuard = ConsumeTokenRequest['guard']
 
 /** Published input state (the currency; per-session). */
+/** One quoted message the draft is answering, and the excerpt that names it. */
+export interface ReplyTarget {
+  readonly text: string
+}
+
 export interface InputState {
   /** Clipboard-text projection of the editor document (chips expanded to their clipboard form). */
   readonly draft: string
@@ -282,6 +289,13 @@ export interface InputState {
   readonly phase: 'plain' | 'adjudicating' | 'claimed' | 'submitting'
   /** Present exactly while claimed/submitting (claim snapshot during flight; submit closure withheld). */
   readonly claim?: { readonly name: string; readonly token: string; readonly hint?: string; readonly attachments?: boolean }
+  /**
+   * The message the reader is replying to, as the excerpt they selected.
+   *
+   * Only the excerpt: what the reader quoted out of a message is the whole of what this composer
+   * knows about it, and inventing an id it was never given would be a claim it cannot support.
+   */
+  readonly reply?: ReplyTarget | null
   /** Reference occurrence view of the editor's chips, sorted by offset. */
   readonly occurrences: readonly Occurrence[]
   /** Messages still waiting for their own turn. */

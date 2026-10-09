@@ -19,6 +19,7 @@ import type {
   InputActions, InputEffect, InputNotice, InputState, InputTriggerController, PickOutcome,
   SessionInput, SubmitAttempt, SubmitAttachment, SubmitOutcome,
 } from '../contract/input.ts'
+import type { ReplyTarget } from '../contract/input.ts'
 import type {
   ArbitrateKey, ArbitrateOutcome, ComposerKeyboard, DraftInput, DraftSnapshot, Occurrence, ReferenceInsert, TokenSpan,
 } from '../contract/draft-editor.ts'
@@ -131,6 +132,7 @@ export class SessionInputShell implements SessionInput {
     persistDraft: () => { this.persistCurrentDraft() },
     addAttachments: ids => this.addAttachments(ids),
     removeAttachment: (id) => { this.removeAttachment(id) },
+    replyTo: (target) => { this.setReply(target) },
     pruneAttachments: (ids) => { this.pruneAttachments(ids) },
     submit: () => { this.submit('queue') },
   }
@@ -146,6 +148,8 @@ export class SessionInputShell implements SessionInput {
   private lastPublishedDraft: DraftSnapshot | undefined
   private draftSnapshotCache: { revision: number; value: DraftSnapshot } | undefined
   private attachmentIds: readonly DraftAttachmentId[] = []
+  /** The message this draft answers, or null. Cleared on submit and by the reader. */
+  private reply: ReplyTarget | null = null
   private disposed = false
   /** Conversation store writer for the current semantic document. */
   private persistDraft: ((draft: DraftSnapshot) => void) | undefined
@@ -882,12 +886,27 @@ export class SessionInputShell implements SessionInput {
     return {
       draft: this.projection.clipboardText,
       attachmentIds: this.attachmentIds,
+      reply: this.reply,
       draftRev: this.rev,
       phase: core.phase,
       ...(core.claim !== undefined ? { claim: core.claim } : {}),
       occurrences: this.projection.occurrences,
       queue: this.deps.inbox?.getSnapshot()?.['next-turn'] ?? EMPTY_QUEUE,
     }
+  }
+
+  /**
+   * Point this draft at the message it answers, or clear it.
+   *
+   * Refused while a submission is in flight, like every other draft edit: what is being sent has
+   * already been read, and a reply that arrives after that would attach to nothing.
+   * @param target - the excerpt being answered, or null to clear.
+   */
+  private setReply(target: ReplyTarget | null): void {
+    if (this.snapshot.phase !== 'plain') return
+    if (this.reply === target) return
+    this.reply = target
+    this.publish()
   }
 
   private publish(): void {
