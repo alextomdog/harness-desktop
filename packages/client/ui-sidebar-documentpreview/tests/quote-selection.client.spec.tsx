@@ -57,6 +57,8 @@ function context(sidebarRight?: unknown): never {
 function selectInComposer(passage: string): HTMLElement {
   const composer = document.createElement('div')
   composer.setAttribute('contenteditable', 'true')
+  // The editor's own hook: a file may be named only for a selection that is actually IN it.
+  composer.setAttribute('data-textpreview-editor', '')
   composer.textContent = passage
   document.body.append(composer)
   const range = document.createRange()
@@ -165,6 +167,31 @@ describe('quoting a page selection', () => {
     pressQuote()
 
     await vi.waitFor(() => { expect(inserted.join('')).toContain('nothing names me') })
+    expect(inserted.join('')).not.toContain('@')
+  })
+
+  it('names no file when the passage came from the conversation', async () => {
+    // The reader selected TALK, not a file. A file tab being open in the sidebar says nothing
+    // about what they selected, and writing its name into the draft would be a claim they never
+    // made — the mistake this case exists to prevent.
+    // The composer the passage goes INTO, which is always there — while the SELECTION is what
+    // says where the passage came from, and here it came from the conversation.
+    const composer = document.createElement('div')
+    composer.setAttribute('contenteditable', 'true')
+    const talk = document.createElement('div')
+    talk.textContent = 'a passage from the conversation'
+    document.body.append(composer, talk)
+    const range = document.createRange()
+    range.selectNodeContents(talk)
+    const selection = window.getSelection() as Selection
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const inserted = recordInsertion()
+    installQuoteShortcut(context({ active: () => ({ contentId: 'dsh-resource://file/paper' }) }))
+    pressQuote()
+
+    await vi.waitFor(() => { expect(inserted.join('')).toContain('a passage from the conversation') })
     expect(inserted.join('')).not.toContain('@')
   })
 

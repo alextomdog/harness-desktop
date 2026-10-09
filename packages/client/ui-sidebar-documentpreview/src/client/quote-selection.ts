@@ -190,7 +190,13 @@ export function installQuoteShortcut(ctx: Context): void {
       // Which file this came from, read from the tab the reader is looking at rather than
       // guessed from what the header happens to display: the tab knows its own address, and the
       // address is what a session file is named by.
-      const sidebar = ctx.get('sidebarRight')
+      // Which surface the selection is actually IN decides whether a file may be named at all.
+      // Quoting the conversation while a file happens to be open in the sidebar is not quoting that
+      // file, and putting its name in the draft would be a claim the reader never made.
+      const anchor = window.getSelection()?.anchorNode ?? null
+      const holder = anchor instanceof Element ? anchor : anchor?.parentElement ?? null
+      const inEditor = holder !== null && holder.closest('[data-textpreview-editor]') !== null
+      const sidebar = inEditor ? ctx.get('sidebarRight') : undefined
       // Guarded by typeof, not merely by presence: a service that exists WITHOUT this method would
       const active = typeof sidebar?.active === 'function' ? sidebar.active() : undefined
       const origin = active === undefined ? undefined : hostFileOf(active.contentId).path
