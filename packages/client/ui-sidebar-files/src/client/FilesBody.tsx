@@ -9,6 +9,7 @@
  * PathLabel for the root, followed by reload and workspace directory actions.
  */
 import { useEffect, useLayoutEffect, useRef } from 'react'
+import type { DragEvent as ReactDragEvent } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { RemoteFailure } from '@deepseek-ai/dsh-api-remotes/client'
@@ -45,6 +46,21 @@ const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base'
  * @param entries - the listing as the endpoint returned it.
  * @returns a new array, directories first, then by name within each group.
  */
+/**
+ * Offer one entry's path to whatever is listening.
+ *
+ * The drag carries a LOCATION, not bytes: what the reader is doing is naming a file in the
+ * workspace, and a chip that holds the path is what the composer can actually use. The path is
+ * the workspace-relative one the tree already addresses entries by, so both sides mean the
+ * same file without either having to know where the workspace is mounted.
+ * @param event - the drag start.
+ * @param path - the entry's workspace-relative path.
+ */
+export function dragOut(event: ReactDragEvent<HTMLButtonElement>, path: string): void {
+  event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.setData('text/plain', path)
+}
+
 export function orderEntries(entries: readonly WorkspaceDirectoryEntry[]): WorkspaceDirectoryEntry[] {
   return [...entries].sort((left, right) => {
     const group = Number(right.type === 'directory') - Number(left.type === 'directory')
@@ -84,7 +100,14 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
     const expanded = tree.state.expanded.includes(path)
     return (
       <li className={css.item} data-files-entry="directory" data-files-path={path}>
-        <button type="button" className={css.row} aria-expanded={expanded} onClick={() => { tree.onToggle(parent, path) }}>
+        <button
+          type="button"
+          className={css.row}
+          aria-expanded={expanded}
+          onClick={() => { tree.onToggle(parent, path) }}
+          draggable
+          onDragStart={(event) => { dragOut(event, path) }}
+        >
           {expanded ? <IconFolderOpenRegular className={css.icon} /> : <IconFolderCloseRegular className={css.icon} />}
           <span className={css.name}>{entry.name}</span>
         </button>
@@ -95,7 +118,13 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
   if (entry.type === 'file') {
     return (
       <li className={css.item} data-files-entry="file" data-files-path={path}>
-        <button type="button" className={css.row} onClick={() => { tree.onOpen(path) }}>
+        <button
+          type="button"
+          className={css.row}
+          onClick={() => { tree.onOpen(path) }}
+          draggable
+          onDragStart={(event) => { dragOut(event, path) }}
+        >
           <FileTypeIcon kind={classifyFileType(entry.name)} size={16} className={css.fileIcon} />
           <span className={css.name}>{entry.name}</span>
         </button>
