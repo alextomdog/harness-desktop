@@ -21,6 +21,13 @@ export interface DraftEditorProps {
   readonly onWorkspaceKeyDown: KeyboardEventHandler<HTMLDivElement>
   readonly hint: string | null
   readonly showPlaceholder: boolean
+  /**
+   * Paths dropped on the editable surface, handed over by whoever owns the draft.
+   *
+   * Absent means this bar does not take drops, and the surface then does not claim them —
+   * a drag nobody will use must reach whatever is behind it.
+   */
+  readonly onDropPaths?: (paths: readonly string[]) => void
 }
 
 /**
@@ -30,7 +37,7 @@ export interface DraftEditorProps {
  */
 export function DraftEditor({
   classNames: css, editor, scrollRef, editable, editorDisabled, phase, placeholderText, ariaLabel,
-  workspaceTrigger, workspacePickerOpen, onWorkspaceKeyDown, hint, showPlaceholder,
+  workspaceTrigger, workspacePickerOpen, onWorkspaceKeyDown, hint, showPlaceholder, onDropPaths,
 }: DraftEditorProps): ReactNode {
   return (
     <div ref={scrollRef} className={css.scroll} data-input-scroll>
@@ -38,6 +45,7 @@ export function DraftEditor({
         <ComposerContentEditable
           editor={workspaceTrigger ? null : editor}
           editable={editable}
+          {...onDropPaths === undefined ? {} : { onDropPaths }}
           className={clsx(css.input, editorDisabled && css.inputDisabled)}
           data-phase={phase}
           aria-disabled={editorDisabled || undefined}
