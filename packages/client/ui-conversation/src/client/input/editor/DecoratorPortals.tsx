@@ -1,3 +1,4 @@
+import { $getNodeByKey } from 'lexical'
 /**
  * Decorator render loop: portals every decorator node's React face into its
  * host element (what @lexical/react's composer does internally, scoped to
@@ -34,7 +35,18 @@ export function DecoratorPortals({ editor }: DecoratorPortalsProps): ReactNode {
     <>
       {Object.entries(decorators).map(([key, jsx]) => {
         const el = editor.getElementByKey(key)
-        return el === null ? null : createPortal(jsx, el, key)
+        if (el === null) return null
+        // A chip cannot remove itself: a node has no editor to run an update through, and
+        // `$getEditor` only means anything inside one. This loop has the editor, so it hands the
+        // gesture down — and an ordinary update is what puts the removal on the undo stack,
+        // beside every other edit the reader makes.
+        return createPortal(
+          React.cloneElement(jsx, {
+            onRemove: () => { editor.update(() => { $getNodeByKey(key)?.remove() }) },
+          }),
+          el,
+          key,
+        )
       })}
     </>
   )

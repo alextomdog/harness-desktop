@@ -17,6 +17,13 @@ export interface ReferenceChipProps {
   readonly appearance?: ReferenceIconKind | undefined
   /** Owner-resolution failure styling bit. */
   readonly invalid: boolean
+  /**
+   * Take this chip off the draft, when the reader asks for it.
+   *
+   * Absent means no gesture is offered: the chip stays pure display, and whoever owns the editor
+   * decides whether a removal is possible at all.
+   */
+  readonly onRemove?: (() => void) | undefined
 }
 
 /**
@@ -24,13 +31,32 @@ export interface ReferenceChipProps {
  * @param props - label, optional domain glyph, and the invalid bit.
  * @returns the chip body (icon + truncating label).
  */
-export function ReferenceChip({ label, appearance, invalid }: ReferenceChipProps): ReactNode {
+export function ReferenceChip({ label, appearance, invalid, onRemove }: ReferenceChipProps): ReactNode {
   return (
     <span className={clsx(referenceCss.reference, css.chip, appearance === 'file' && !invalid && referenceCss.openable, invalid && css.invalid)} title={label}>
       {appearance === undefined
         ? <span className={css.marker} aria-hidden>@</span>
         : <ReferenceIconRegular kind={appearance} size={14} className={css.icon} />}
       <span className={css.label}>{label}</span>
+      {onRemove !== undefined && (
+        <button
+          type="button"
+          className={css.remove}
+          data-composer-chip-remove
+          aria-label={label}
+          // An SVG, not a glyph: the chip element's text is its label and nothing else, and a
+          // literal × would quietly become part of it.
+          // The chip lives in a contenteditable, so a pointerdown that reached the editor would
+          // start a selection and the click would move the caret; neither is let through.
+          onPointerDown={(event) => { event.preventDefault(); event.stopPropagation() }}
+          onClick={(event) => { event.preventDefault(); event.stopPropagation(); onRemove() }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+            <line x1="1.5" y1="1.5" x2="8.5" y2="8.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="8.5" y1="1.5" x2="1.5" y2="8.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
     </span>
   )
 }

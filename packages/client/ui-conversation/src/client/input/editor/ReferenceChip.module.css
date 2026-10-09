@@ -30,3 +30,22 @@
   text-decoration: line-through;
   opacity: 0.7;
 }
+
+/* Out of the way until the chip is pointed at: a chip is something to read first. */
+.remove {
+  display: none;
+  align-items: center;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.chip:hover .remove,
+.chip:focus-within .remove {
+  display: inline-flex;
+}
