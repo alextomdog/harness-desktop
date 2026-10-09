@@ -203,6 +203,15 @@ export function WorkspaceFileTree({
   const [open, setOpen] = useState(true)
   /** The row a delete is about to remove, while its confirmation is up. */
   const [confirmDelete, setConfirmDelete] = useState<Row | null>(null)
+  /**
+   * The rows the reader has taken, and the row a shift-click measures from.
+   *
+   * `selected` remains the ONE row an action would act on — the context menu and rename still
+   * mean it — while this is the range the tree highlights. Ctrl adds or removes one, Shift
+   * takes the run between the anchor and the row, and a plain click is a selection of one.
+   */
+  const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set())
+  const anchor = useRef<string | null>(null)
   /** The two dismissible surfaces, so an outside-press check can exempt them. */
   const menuRef = useRef<HTMLDivElement | null>(null)
   const promptRef = useRef<HTMLDivElement | null>(null)
@@ -501,10 +510,10 @@ export function WorkspaceFileTree({
           return (
             <div
               key={row.path}
-              className={clsx(css.row, selected === row.path && css.selected)}
+              className={clsx(css.row, selection.has(row.path) && css.multiSelected, selected === row.path && css.selected)}
               role="treeitem"
               aria-level={row.depth + 1}
-              aria-selected={selected === row.path}
+              aria-selected={selection.has(row.path)}
               aria-expanded={directory ? open : undefined}
               tabIndex={0}
               // A row offers its PATH, because that is what naming it elsewhere means: the file
@@ -522,8 +531,28 @@ export function WorkspaceFileTree({
                 setSelected(row.path)
                 setMenu({ row, left: event.clientX, top: event.clientY })
               }}
-              onClick={() => {
+              onClick={(event) => {
+                const extended = event.shiftKey || event.ctrlKey || event.metaKey
                 setSelected(row.path)
+                setSelection((current) => {
+                  if (event.shiftKey && anchor.current !== null) {
+                    const from = rows.findIndex(candidate => candidate.path === anchor.current)
+                    const to = rows.findIndex(candidate => candidate.path === row.path)
+                    if (from === -1 || to === -1) return new Set([row.path])
+                    const [start, end] = from <= to ? [from, to] : [to, from]
+                    return new Set(rows.slice(start, end + 1).map(candidate => candidate.path))
+                  }
+                  if (event.ctrlKey || event.metaKey) {
+                    const next = new Set(current)
+                    if (next.has(row.path)) next.delete(row.path)
+                    else next.add(row.path)
+                    return next
+                  }
+                  return new Set([row.path])
+                })
+                anchor.current = row.path
+                // A click that is extending a selection is not also a request to open.
+                if (extended) return
                 if (directory) toggle(row.path)
                 else openFile?.(sessionId, row.path)
               }}

@@ -336,3 +336,8 @@
   font: inherit;
   font-size: 12px;
 }
+/* Rows the reader has taken as a range. Quieter than the one row an action would act on, so
+   the two never read as the same thing. */
+.multiSelected {
+  background: var(--dsh-surface-hover, rgb(0 0 0 / 5%));
+}
