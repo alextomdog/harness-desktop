@@ -459,6 +459,14 @@ export function WorkspaceFileTree({
               aria-selected={selected === row.path}
               aria-expanded={directory ? open : undefined}
               tabIndex={0}
+              // A row offers its PATH, because that is what naming it elsewhere means: the file
+              // is already in the workspace, so nothing is uploaded and nothing is copied. A
+              // trailing slash is how a folder is named, here and in the mention grammar.
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = 'copy'
+                event.dataTransfer.setData('text/plain', directory ? `${row.path}/` : row.path)
+              }}
               onContextMenu={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
