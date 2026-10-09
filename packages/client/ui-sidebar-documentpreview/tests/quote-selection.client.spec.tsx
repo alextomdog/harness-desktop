@@ -95,7 +95,9 @@ describe('quoting a page selection', () => {
     signal.fire()
 
     await vi.waitFor(() => { expect(inserted.join('')).toContain('quoted from the page') })
-    expect(page.asked[0]).toBe('window.getSelection().toString()')
+    // The expression now returns BOTH halves of the provenance: what was selected, and the page
+    // it was selected on. A page is named by its address, so a quote can say where it came from.
+    expect(page.asked[0]).toBe('JSON.stringify({ text: window.getSelection().toString(), url: location.href })')
     expect(inserted.join('')).toContain('> quoted from the page')
   })
 

@@ -50,7 +50,7 @@ function selectedText(): string {
  * Put one passage into the composer, as a quote the reader can type after.
  * @param quote - the selected text.
  */
-function quoteInto(quote: string): void {
+function quoteInto(quote: string, lead?: string): void {
   // The passage goes in as TEXT, not as a chip, and that is a decision rather than a
   // shortcut. A chip has to name an owning reference source, and a source is a whole menu
   // group with candidates and pick handling: registering one just to quote would put a
@@ -63,6 +63,13 @@ function quoteInto(quote: string): void {
   const composer = document.querySelector<HTMLElement>('[contenteditable=true]')
   if (composer === null) return
   composer.focus()
+  // What the passage came FROM goes in first, so the draft says where a quote is from before it
+  // says what the quote is: a file is named as a reference — the same `@path` a typed mention and
+  // a dragged file produce — and anything else is named by its address, which is the whole of
+  // what identifies a page.
+  if (lead !== undefined && lead !== '') {
+    document.execCommand('insertText', false, `${lead}\n`)
+  }
   const quoted = quote.slice(0, MAX_QUOTE).split('\n').map(line => `> ${line}`).join('\n')
   document.execCommand('insertText', false, `${quoted}\n\n`)
 }
@@ -134,8 +141,25 @@ export function installQuoteShortcut(ctx: Context): void {
         | { executeJavaScript?: (code: string) => Promise<unknown> }
         | null
       if (frame !== null && typeof frame.executeJavaScript === 'function') {
-        void frame.executeJavaScript('window.getSelection().toString()').then((text: unknown) => {
-          if (typeof text === 'string' && text.trim() !== '') quoteInto(text)
+        // One call, both halves: what was selected AND where it was selected. The address is what
+        // names a page, so the draft can say which page a passage came from.
+        void frame.executeJavaScript('JSON.stringify({ text: window.getSelection().toString(), url: location.href })').then((packed: unknown) => {
+          // A page this host cannot read returns whatever it returns: the pair is the shape asked
+          // for, and a bare string is still a selection, so the gesture keeps working rather than
+          // going silent because a reply was not the shape expected of it.
+          let text: unknown = packed
+          let url: unknown
+          if (typeof packed === 'string' && packed.startsWith('{')) {
+            try {
+              const parsed: unknown = JSON.parse(packed)
+              if (typeof parsed === 'object' && parsed !== null) {
+                text = (parsed as { text?: unknown }).text
+                url = (parsed as { url?: unknown }).url
+              }
+            } catch { text = packed }
+          }
+          const lead = typeof url === 'string' && url !== '' ? url : undefined
+          if (typeof text === 'string' && text.trim() !== '') quoteInto(text, lead)
         }).catch(() => undefined)
         return
       }
