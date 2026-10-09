@@ -188,15 +188,10 @@ export function installQuoteShortcut(ctx: Context): void {
       if (event.altKey || event.ctrlKey || event.metaKey) return
       const quote = (selectedText() || remembered).trim()
       // Which file this came from, read from the tab the reader is looking at rather than
-      // guessed from what the header happens to display: the tab knows its own address, and the
-      // address is what a session file is named by.
-      // Which surface the selection is actually IN decides whether a file may be named at all.
-      // Quoting the conversation while a file happens to be open in the sidebar is not quoting that
-      // file, and putting its name in the draft would be a claim the reader never made.
-      // WHICH preview the selection is in decides the file, not which tab the sidebar happens to
+      // WHICH preview the selection is in decides the file, never which tab the sidebar happens to
       // have active: every preview carries its own address, so a passage taken from a PDF is named
-      // by that PDF, one taken from an office document by that document, and one taken from the
-      // conversation by nothing at all.
+      // by that PDF, one from an office document by that document, and one from the conversation by
+      // nothing — a file named for a passage that did not come from it is a claim never made.
       const anchor = window.getSelection()?.anchorNode ?? null
       const holder = anchor instanceof Element ? anchor : anchor?.parentElement ?? null
       const preview = holder?.closest('[data-textpreview-url]') ?? null
@@ -205,6 +200,26 @@ export function installQuoteShortcut(ctx: Context): void {
       if (quote === '') return
       const sessionId = currentSession(ctx)
       if (sessionId === undefined) return
+      // A passage taken from the CONVERSATION is not a quotation to paste: it is the message the
+      // reader is answering, and the composer already knows how to show that. So the gesture sets a
+      // reply rather than writing text, and the reader's own words stay their own.
+      if (address === '') {
+        const conversation = ctx.get('conversation')
+        const sessions = ctx.get('sessions')
+        // The id was read out of this service's own snapshot, so the brand is already true of it;
+        // taking the parameter type from the service keeps that a narrowing rather than a claim.
+        const binding = sessions === undefined
+          ? undefined
+          : sessions.binding(sessionId as Parameters<typeof sessions.binding>[0])
+        if (conversation !== undefined && binding !== undefined) {
+          conversation.input.for(binding).replyTo({ text: quote })
+          event.preventDefault()
+          event.stopPropagation()
+          // One press, one quote: a remembered passage must not be quotable twice by accident.
+          remembered = ''
+          return
+        }
+      }
       event.preventDefault()
       event.stopPropagation()
       // One press, one quote: a remembered passage must not be quotable twice by accident.

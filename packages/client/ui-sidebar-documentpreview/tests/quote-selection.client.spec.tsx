@@ -14,6 +14,9 @@ import { installQuoteShortcut } from '../src/client/quote-selection.ts'
 // What the editor case is about is that a quote NAMES the file it came from — not how an address
 // is spelled, which the file-reference grammar already owns. So the parser is stubbed and this
 // suite stays about the gesture.
+/** Replies the gesture asked the composer to answer, reset between cases. */
+const replies: unknown[] = []
+
 /** Cleanups of every effect registered so far, run between cases. */
 const cleanups: Array<() => void> = []
 
@@ -31,7 +34,15 @@ vi.mock('../src/client/rpc.ts', () => ({
  */
 function context(sidebarRight?: unknown): never {
   const row = { id: 's1', retainedBy: { mainView: 1 } }
-  const sessions = { list: { getSnapshot: () => ({ byId: { s1: row } }) } }
+  const sessions = {
+    list: { getSnapshot: () => ({ byId: { s1: row } }) },
+    // The gesture resolves the shell through a binding, which is how the hub does it too.
+    binding: () => ({ session: 's1' }),
+  }
+  // What the gesture asked the composer to answer — the whole of the conversation case.
+  const conversation = {
+    input: { for: () => ({ replyTo: (target: unknown) => { replies.push(target) } }) },
+  }
   return {
     // The cleanup is KEPT and run after each case: a listener that outlives its case keeps
     // answering the next case's press with the previous case's tab, which is exactly how one
@@ -40,6 +51,7 @@ function context(sidebarRight?: unknown): never {
     get: (name: string) => {
       if (name === 'sidebarRight') return sidebarRight
       if (name === 'sessions') return sessions
+      if (name === 'conversation') return conversation
       return undefined
     },
   } as never
@@ -142,6 +154,7 @@ describe('quoting a page selection', () => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     while (cleanups.length > 0) cleanups.pop()?.()
+    replies.length = 0
     document.body.innerHTML = ''
   })
 
@@ -177,7 +190,7 @@ describe('quoting a page selection', () => {
     installQuoteShortcut(context())
     pressQuote()
 
-    await vi.waitFor(() => { expect(inserted.join('')).toContain('nothing names me') })
+    await vi.waitFor(() => { expect(replies).toHaveLength(1) })
     expect(inserted.join('')).not.toContain('@')
   })
 
@@ -202,7 +215,11 @@ describe('quoting a page selection', () => {
     installQuoteShortcut(context({ active: () => ({ contentId: 'dsh-resource://file/paper' }) }))
     pressQuote()
 
-    await vi.waitFor(() => { expect(inserted.join('')).toContain('a passage from the conversation') })
+    // The message is ANSWERED, not pasted: the draft keeps the reader's own words, and the
+    // composer is told which message is being replied to.
+    await vi.waitFor(() => { expect(replies).toHaveLength(1) })
+    expect(replies[0]).toEqual({ text: 'a passage from the conversation' })
+    expect(inserted.join('')).not.toContain('a passage from the conversation')
     expect(inserted.join('')).not.toContain('@')
   })
 
