@@ -108,6 +108,11 @@
   tab-size: 2;
   white-space: pre-wrap;
   overflow-wrap: break-word;
+  /* Both layers are scroll containers, and a scrollbar takes width from the content box. The
+     textarea grows one when the text is tall; the paint layer never does. Without the same
+     reservation on both, they wrap at different columns and every line after the first
+     scrollbar drifts away from its own number. Stable reserves it whether or not it shows. */
+  scrollbar-gutter: stable;
 }
 
 /* The paint layer: the highlighted source, never pointed at and never selected. */
