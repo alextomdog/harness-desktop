@@ -416,3 +416,50 @@
 .activity { display: flex; align-items: center; flex: none; }
 .activity:empty { display: none; }
 .activityExpanded { flex: 1; min-width: 0; }
+
+/* The message being answered: context for the draft, not part of it, so it sits above the
+   surface the reader types into and can be taken off without touching what they wrote. */
+.reply {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 10px 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsh-border-subtle, rgb(0 0 0 / 12%));
+  border-radius: 8px;
+  background: var(--dsh-surface-subtle, rgb(0 0 0 / 3%));
+  font-size: 12px;
+}
+
+.replyMark {
+  flex: none;
+  opacity: 0.6;
+  transform: scaleX(-1);
+}
+
+/* One line of the excerpt, because the card says WHAT is being answered, not all of it: the
+   message itself is right above in the transcript. */
+.replyText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.replyClear {
+  flex: none;
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  line-height: 1;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.replyClear:hover {
+  opacity: 1;
+}

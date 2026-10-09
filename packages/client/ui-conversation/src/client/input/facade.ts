@@ -132,7 +132,7 @@ export class SessionInputShell implements SessionInput {
     persistDraft: () => { this.persistCurrentDraft() },
     addAttachments: ids => this.addAttachments(ids),
     removeAttachment: (id) => { this.removeAttachment(id) },
-    replyTo: (target) => { this.setReply(target) },
+    replyTo: (target) => { this.replyTo(target) },
     pruneAttachments: (ids) => { this.pruneAttachments(ids) },
     submit: () => { this.submit('queue') },
   }
@@ -902,7 +902,12 @@ export class SessionInputShell implements SessionInput {
    * already been read, and a reply that arrives after that would attach to nothing.
    * @param target - the excerpt being answered, or null to clear.
    */
-  private setReply(target: ReplyTarget | null): void {
+  /**
+   * Point this draft at the message it answers, or clear it. Public so a shell can be driven
+   * directly, and refused while a submission is in flight like every other draft edit.
+   * @param target - the excerpt being answered, or null to clear.
+   */
+  replyTo(target: ReplyTarget | null): void {
     if (this.snapshot.phase !== 'plain') return
     if (this.reply === target) return
     this.reply = target

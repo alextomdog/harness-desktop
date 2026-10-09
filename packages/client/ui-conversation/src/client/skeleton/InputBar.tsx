@@ -53,6 +53,8 @@ export const InputBar = memo(function InputBar({
   placeholder, accessory,
 }: InputBarProps) {
   const input = useInput(s => s)
+  /** The message this draft answers, if any — read from the same snapshot the draft comes from. */
+  const reply = input?.reply ?? null
   const notice = useNotices(s => s)
   const busyEnter = useBusyEnter(s => s)
   const stopKeys = useStopShortcut(keys => keys)
@@ -413,6 +415,28 @@ export const InputBar = memo(function InputBar({
             size: imageSizeText(imageLimits.maxImageBytes),
           },
         })}
+        {reply !== undefined && reply !== null && (
+          // The message being answered, shown ABOVE the surface the reader types into: a reply is
+          // context for the message, not part of it, and putting the excerpt in the draft would
+          // make the reader's own words out of someone else's.
+          <div className={css.reply} data-composer-reply>
+            <span className={css.replyMark} aria-hidden="true">↰</span>
+            <span className={css.replyText}>{reply.text}</span>
+            <button
+              type="button"
+              className={css.replyClear}
+              data-composer-reply-clear
+              aria-label={t('input.replyClear')}
+              title={t('input.replyClear')}
+              onClick={() => { inputActions?.replyTo?.(null) }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+                <line x1="1.5" y1="1.5" x2="8.5" y2="8.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                <line x1="8.5" y1="1.5" x2="1.5" y2="8.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        )}
         {/* One scrollport, one text surface: the contenteditable grows with
             its content and .scroll — capped at 14 lines in CSS — is the only
             thing that scrolls. Chips are decorator portals inside the same

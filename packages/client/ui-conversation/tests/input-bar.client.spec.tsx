@@ -1472,6 +1472,25 @@ describe('decorations', () => {
     expect(shell.snapshot.occurrences[0]).toMatchObject({ offset: 3, length: 3 })
   })
 
+  it('shows the message a draft answers, and takes it off', () => {
+    const { view, shell } = bench()
+    // Nothing to answer yet: a reply card is not decoration, it only exists when there is one.
+    expect(view.container.querySelector('[data-composer-reply]')).toBeNull()
+
+    act(() => { shell.replyTo({ text: '为什么推荐这一版？' }) })
+    const card = view.container.querySelector('[data-composer-reply]')
+    expect(card?.textContent).toContain('为什么推荐这一版？')
+    // The message being answered is context for the draft, not part of it: the draft stays the
+    // reader's own words.
+    expect(shell.snapshot.draft).toBe('')
+
+    act(() => {
+      (view.container.querySelector('[data-composer-reply-clear]') as HTMLElement | null)?.click()
+    })
+    expect(view.container.querySelector('[data-composer-reply]')).toBeNull()
+    expect(shell.snapshot.reply ?? null).toBeNull()
+  })
+
   it('keeps the chip decorator mounted when the session becomes disabled', () => {
     const { view, shell, session, textarea } = bench()
     act(() => {
