@@ -384,6 +384,13 @@ export interface ComposerBarInjected {
    * identified as directories.
    */
   addFiles: ((files: readonly File[], directories?: ReadonlySet<File>) => string | null) | undefined
+  /**
+   * Paths dropped onto the composer, as reference chips.
+   *
+   * A path is not an upload: the reader names a file the workspace already holds, and the chip
+   * carries that name. A trailing slash marks a folder. Absent means this bar takes no drops.
+   */
+  insertReferences?: (paths: readonly string[]) => string | null
   removeAttachment: ((id: DraftAttachmentId) => void) | undefined
   resolveDraftAttachments: ((ids: readonly DraftAttachmentId[]) => readonly ComposerAttachment[]) | undefined
   /** Restart one failed file upload; absent without a session. */

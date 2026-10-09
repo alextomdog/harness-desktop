@@ -43,7 +43,7 @@ import css from './InputBar.module.css'
 export type InputBarProps = ComposerBarProps
 
 export const InputBar = memo(function InputBar({
-  useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments,
+  useSession, useInput, inputActions, keyboard, addFiles, insertReferences, removeAttachment, resolveDraftAttachments,
   retryFileUpload,
   toggleCommandMenu, stop, t,
   renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut,
@@ -414,6 +414,7 @@ export const InputBar = memo(function InputBar({
           onWorkspaceKeyDown={onWorkspaceKeyDown}
           hint={hint}
           showPlaceholder={draft === '' && attachments.length === 0 && !claimActive}
+          {...insertReferences === undefined ? {} : { onDropPaths: (paths: readonly string[]) => { insertReferences(paths) } }}
         />
         <div ref={rowRef} className={css.row}>
           <div className={css.tools} hidden={activity}>

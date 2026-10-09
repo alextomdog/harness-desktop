@@ -106,7 +106,7 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
           aria-expanded={expanded}
           onClick={() => { tree.onToggle(parent, path) }}
           draggable
-          onDragStart={(event) => { dragOut(event, path) }}
+          onDragStart={(event) => { dragOut(event, `${path}/`) }}
         >
           {expanded ? <IconFolderOpenRegular className={css.icon} /> : <IconFolderCloseRegular className={css.icon} />}
           <span className={css.name}>{entry.name}</span>

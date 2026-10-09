@@ -496,6 +496,28 @@ export function apply(ctx: Context, config: Config = Config({})): void {
             return error instanceof Error ? error.message : String(error)
           }
         },
+        insertReferences: (paths) => {
+          if (sessions.binding(sessionId) === undefined) return t('file.sessionUnavailable')
+          if (shell.snapshot.phase === 'adjudicating' || shell.snapshot.phase === 'submitting') {
+            return t('attachment.dropBlocked')
+          }
+          const references: ReferenceInsert[] = []
+          for (const path of paths) {
+            // A path is not an upload: the reader is naming a file the workspace already holds,
+            // so the chip carries the path itself. A trailing slash is how the tree marks a
+            // folder, and it is also what the mention grammar needs to name one.
+            const directory = path.endsWith('/')
+            const mention = formatFileMention({ path, kind: 'file' }, false)
+            if (mention === undefined) return t('attachment.pathUnsupported')
+            const label = workspaceTitleOf(path.replace(/\/$/u, '')) || path
+            references.push({
+              source: 'reference', ref: mention, label,
+              appearance: directory ? 'folder' : 'file', clipboardText: mention,
+            })
+          }
+          if (references.length === 0) return null
+          return shell.addFiles(references, []) ? null : t('attachment.dropBlocked')
+        },
         removeAttachment: (id) => {
           if (shell.removeAttachment(id)) conversation.releaseDraftAttachment(id)
         },
