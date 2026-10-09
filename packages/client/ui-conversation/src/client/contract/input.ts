@@ -278,7 +278,15 @@ export type ConsumeTokenGuard = ConsumeTokenRequest['guard']
 /** Published input state (the currency; per-session). */
 /** One quoted message the draft is answering, and the excerpt that names it. */
 export interface ReplyTarget {
+  /** The passage being answered or quoted. */
   readonly text: string
+  /**
+   * What the passage came from, when anything does: a file's `@path`, or a page's address.
+   *
+   * It travels WITH the quotation, because the card shows where a quote is from and the outgoing
+   * message has to say the same thing the card did.
+   */
+  readonly lead?: string
 }
 
 export interface InputState {

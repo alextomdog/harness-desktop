@@ -104,6 +104,8 @@ interface DetachedDraft {
   readonly draft: string
   readonly occurrences: readonly Occurrence[]
   readonly attachmentIds: readonly DraftAttachmentId[]
+  /** The reply this send was answering, so a failure can put it back. */
+  readonly reply: ReplyTarget | null
 }
 
 /**
@@ -366,6 +368,9 @@ export class SessionInputShell implements SessionInput {
         void this.deps.defaultSink('', attachmentIds, mode, controller.signal).then((outcome) => {
           if (this.disposed || !this.attachmentFlights.delete(flight)) return
           if (outcome.kind === 'success') return
+          // The message was answered and sent. Leaving the card up would say the reader is
+          // still answering something that has already gone.
+          if (this.reply !== null) { this.reply = null; this.publish() }
           this.restoreAttachments(attachmentIds)
           if (outcome.text !== undefined) this.notify('error', outcome.text)
         }, (error: unknown) => {
@@ -699,7 +704,7 @@ export class SessionInputShell implements SessionInput {
     const attachmentIds = [...this.attachmentIds]
     this.attachmentIds = []
     const occurrences = this.projection.occurrences
-    const record = { draft, occurrences, attachmentIds }
+    const record = { draft, occurrences, attachmentIds, reply: this.reply }
     this.detachedDrafts.set(attempt.seq, record)
     if (this.failedRestoreRev === this.rev) {
       this.failedDetached.clear()
@@ -707,6 +712,10 @@ export class SessionInputShell implements SessionInput {
     }
     if (occurrences.length === 0) {
       this.settleSink(attempt, this.deps.defaultSink(this.outgoing(draft.trim()), attachmentIds, mode, attempt.signal))
+      // Cleared in the same turn the reader pressed Enter — not after the round trip, which would
+      // leave the card sitting there while the message is already on its way and read as a hang.
+      // The text above already carries the quotation; a failure puts the card back.
+      if (this.reply !== null) { this.reply = null; this.publish() }
       return
     }
     const inputTriggers = this.deps.inputTriggers?.()
@@ -758,6 +767,9 @@ export class SessionInputShell implements SessionInput {
           return
         }
         this.detachedDrafts.delete(attempt.seq)
+        // The answer has gone. A card left up would say the reader is still answering something
+        // that has already been sent — which is exactly what it did.
+        if (this.reply !== null) { this.reply = null; this.publish() }
         this.dispatchRun(({ type: 'sink-settled', attempt, ok: true, outcome }))
       },
       (error: unknown) => {
@@ -772,6 +784,7 @@ export class SessionInputShell implements SessionInput {
     const record = this.detachedDrafts.get(attempt.seq)
     if (record === undefined) return
     this.detachedDrafts.delete(attempt.seq)
+    if (record.reply !== null) { this.reply = record.reply; this.publish() }
     this.restoreAttachments(record.attachmentIds)
     this.failedDetached.set(attempt.seq, record)
     if (this.projection.clipboardText === '' || this.failedRestoreRev === this.rev) {
@@ -857,6 +870,9 @@ export class SessionInputShell implements SessionInput {
         (outcome) => {
           if (outcome === undefined || this.dead(attempt)) return
           if (outcome.kind === 'success' && attachmentIds.length > 0) {
+            // The message was answered and sent. Leaving the card up would say the reader is
+            // still answering something that has already gone.
+            if (this.reply !== null) { this.reply = null; this.publish() }
             const submitted = new Set(attachmentIds)
             this.attachmentIds = this.attachmentIds.filter(id => !submitted.has(id))
             this.deps.commandAttachments.release(attachmentIds)
@@ -896,7 +912,8 @@ export class SessionInputShell implements SessionInput {
   private outgoing(text: string): string {
     if (this.reply === null) return text
     const quoted = this.reply.text.split('\n').map(line => `> ${line}`).join('\n')
-    return `${quoted}\n\n${text}`
+    const lead = this.reply.lead === undefined || this.reply.lead === '' ? '' : `${this.reply.lead}\n\n`
+    return `${lead}${quoted}\n\n${text}`
   }
 
   private compose(): InputState {

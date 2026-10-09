@@ -1472,6 +1472,18 @@ describe('decorations', () => {
     expect(shell.snapshot.occurrences[0]).toMatchObject({ offset: 3, length: 3 })
   })
 
+  it('takes the reply off once the answer has gone', async () => {
+    const { button, shell, view } = bench({ draft: '我的看法' })
+    act(() => { shell.replyTo({ text: '被回答的那句' }) })
+    expect(view.container.querySelector('[data-composer-reply]')).not.toBeNull()
+
+    act(() => { button.click() })
+    // The message was answered and sent. A card left up says the reader is still answering
+    // something that has already gone — which is exactly what it did.
+    await vi.waitFor(() => { expect(view.container.querySelector('[data-composer-reply]')).toBeNull() })
+    expect(shell.snapshot.reply ?? null).toBeNull()
+  })
+
   it('sends the message being answered with the answer', () => {
     const { button, sink, shell } = bench({ draft: '我的看法' })
     act(() => { shell.replyTo({ text: '为什么推荐这一版？' }) })
