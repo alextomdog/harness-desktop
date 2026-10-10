@@ -35,8 +35,8 @@ import css from './EditableTextBody.module.css'
 /** What the editor is telling the reader about its last save. */
 type SaveState = 'clean' | 'saving' | 'saved' | 'stale' | 'failed'
 
-/** What one Tab inserts: the repo's own indent, so a document does not gain tabs it did not have. */
-const INDENT = '  '
+/** What one Tab inserts: four spaces, the width this project indents with. */
+const INDENT = '    '
 
 /** Copy the editor shows. */
 export interface EditableTextLabels {
