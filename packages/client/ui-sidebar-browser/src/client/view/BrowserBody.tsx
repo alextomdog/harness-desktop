@@ -2,7 +2,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
-import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import {
   Button,
   IconChevronLeftOutlineRegular,
@@ -17,7 +16,7 @@ import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepsee
 import type { BrowserInjected } from '../browser/BrowserController.ts'
 import { emptyBrowserFrame } from '../browser/BrowserFrame.ts'
 import { currentBrowserTarget } from '../browser/BrowserPersistence.ts'
-import type { BrowserStore } from '../browser/store.ts'
+import type { BrowserStore, BrowserSurfaceId } from '../browser/store.ts'
 import css from './Browser.module.css'
 
 const EMPTY_FRAME = emptyBrowserFrame()
@@ -48,7 +47,7 @@ export type BrowserBodyProps = PropsRuntime<'sidebar.right.pane.tab'>
  * without either side pretending to be the other.
  */
 export interface BrowserSurface {
-  readonly id: TabId
+  readonly id: BrowserSurfaceId
   readonly signal: AbortSignal
   readonly initialUrl?: string | undefined
   readonly refreshShortcut?: ShortcutCatalogEntry | undefined
