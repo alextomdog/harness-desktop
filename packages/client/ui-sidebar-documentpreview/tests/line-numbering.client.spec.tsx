@@ -11,7 +11,7 @@
  * through pixels — and that containment is the actual invariant.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { EditableTextBody } from '../src/client/editable/EditableTextBody.tsx'
 
 const LABELS = {
@@ -52,6 +52,25 @@ function lines(container: HTMLElement): HTMLElement[] {
 }
 
 describe('line numbering', () => {
+  it('indents with four spaces when Tab is pressed', () => {
+    const container = editor('alpha\nbeta')
+    const area = container.querySelector<HTMLTextAreaElement>('[data-textpreview-textarea]')
+    expect(area).not.toBeNull()
+
+    // `fireEvent`, not a raw dispatch: React's handlers are reached through its own system, and a
+    // bare dispatchEvent on the node never gets there. The indent lands in the editor's buffer, so
+    // the assertion is on the text the editor ends up holding.
+    act(() => {
+      area?.focus()
+      area?.setSelectionRange(0, 0)
+    })
+    fireEvent.keyDown(area as HTMLTextAreaElement, { key: 'Tab', code: 'Tab' })
+
+    // Four spaces, the width this project indents with: a document must not come back from this
+    // editor indented at a width its own project does not use.
+    const after = container.querySelector<HTMLTextAreaElement>('[data-textpreview-textarea]')
+    expect(after?.value).toBe('    alpha\nbeta')
+  })
   afterEach(() => { cleanup() })
 
   it('numbers every line, in order, starting at one', () => {
