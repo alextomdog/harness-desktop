@@ -1,0 +1,48 @@
+/* The find bar sits above the text it searches: the reader's eyes are already there, and a dialog
+   over the document would cover the very hits it is stepping through. */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-secondary, rgb(0 0 0 / 10%));
+  background: var(--dsw-alias-bg-elevated, transparent);
+  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
+}
+
+.field {
+  min-width: 0;
+  flex: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--dsw-alias-border-secondary, rgb(0 0 0 / 12%));
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.action {
+  flex: none;
+  padding: 3px 7px;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--dsw-alias-bg-hover, rgb(0 0 0 / 6%));
+}
+
+.close {
+  flex: none;
+  padding: 3px 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}

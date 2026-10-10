@@ -27,6 +27,8 @@
 import {
   useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode,
 } from 'react'
+import { FindBar } from './FindBar.tsx'
+import { useFind } from './useFind.ts'
 import { useCodeHighlighter } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HighlightSpan } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WriteWorkspaceFileOutcome } from '../rpc.ts'
@@ -37,6 +39,22 @@ type SaveState = 'clean' | 'saving' | 'saved' | 'stale' | 'failed'
 
 /** What one Tab inserts: four spaces, the width this project indents with. */
 const INDENT = '    '
+
+/** The find bar copy.
+/**
+ * TODO(locale): these belong in the editor's label seat beside the save strings, so a
+ * translated build does not show Chinese here. Kept local for now so the feature is whole.
+ */
+const FIND_LABELS = {
+  findAria: '查找',
+  findPlaceholder: '查找…',
+  next: '下一个',
+  replaceAria: '替换为',
+  replacePlaceholder: '替换为…',
+  replaceOne: '替换',
+  replaceAll: '全部替换',
+  close: '关闭查找',
+} as const
 
 /** Copy the editor shows. */
 export interface EditableTextLabels {
@@ -193,6 +211,10 @@ export function EditableTextBody({
   }, [])
   useEffect(syncLayers)
 
+  // Finding is the editor's own business: the text is here, and so is the textarea the hits are
+  // revealed in.
+  const find = useFind(buffer, setBuffer, areaRef, syncLayers)
+
   const commit = useCallback((): void => {
     const content = bufferRef.current
     if (content === savedText) {
@@ -225,6 +247,18 @@ export function EditableTextBody({
       commit()
       return
     }
+    // Ctrl+F and Ctrl+R belong to the TEXT, like Tab: focus leaving the document on a keystroke the
+    // reader aimed at its content is the mistake an editor must not make.
+    if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 'f' || event.key.toLowerCase() === 'r')) {
+      event.preventDefault()
+      find.openFind(event.key.toLowerCase() === 'r')
+      return
+    }
+    if (event.key === 'Escape' && find.open) {
+      event.preventDefault()
+      find.close()
+      return
+    }
     if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey) return
     // Tab belongs to the TEXT here, not to focus. Leaving the document on a keystroke the
     // reader aimed at their indentation is the one thing an editor must not do — and it
@@ -249,6 +283,20 @@ export function EditableTextBody({
           : ''
   return (
     <div className={css.editor} data-textpreview-editor>
+      {find.open && (
+        <FindBar
+          query={find.query}
+          replacement={find.replacement}
+          replacing={find.replacing}
+          labels={FIND_LABELS}
+          onQuery={find.setQuery}
+          onReplacement={find.setReplacement}
+          onNext={() => { find.step(1) }}
+          onReplaceOne={find.replaceOne}
+          onReplaceAll={find.replaceAll}
+          onClose={find.close}
+        />
+      )}
       {/* The dock refused the close; this is why, and the two things the reader can do about
           it. Saving is the editor's own Ctrl+S path — the one the whole tab already trusts —
           so the prompt does not grow a second way to write the file. */}
