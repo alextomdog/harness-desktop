@@ -1,23 +1,6 @@
 /** Reading the file list a system clipboard holds, which only the main process can see. */
 import { clipboard } from 'electron'
-
-/**
- * Split a shell file list into absolute paths.
- *
- * The format is the shell's own `FileNameW`: every path followed by a NUL, and the list closed by a
- * second NUL. Splitting on the NUL is therefore the whole of the parse — except that the trailing
- * empties it leaves are not paths, and a renderer that received them would try to copy nothing.
- *
- * Exported for its own sake: this is the part worth testing, and it needs no window to run.
- * @param raw - the decoded clipboard payload.
- * @returns the paths it names, in the order the shell wrote them.
- */
-export function parseClipboardFileList(raw: string): readonly string[] {
-  return raw
-    .split('\u0000')
-    .map(entry => entry.trim())
-    .filter(entry => entry !== '')
-}
+import { parseClipboardFileList } from './clipboard-file-list.ts'
 
 /**
  * The clipboard face that can answer for a named format.
