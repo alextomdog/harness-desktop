@@ -557,6 +557,9 @@ export function WorkspaceFileTree({
                 // Shift-click silently becomes a click on one row.
                 const shift = event.shiftKey
                 const toggleOne = event.ctrlKey || event.metaKey
+                // The element this click landed on, read NOW for the same reason the keys are: a
+                // synthetic event is released by the time the updater below runs.
+                const clicked = event.currentTarget as HTMLElement | null
                 const extended = shift || toggleOne
                 setSelected(row.path)
                 setSelection((current) => {
@@ -564,7 +567,11 @@ export function WorkspaceFileTree({
                     // The run is measured over the rows AS RENDERED, read from the DOM: the list a
                     // closure holds can be a render behind, and a range measured against a list
                     // that no longer matches what the reader sees is a range that finds nothing.
-                    const rendered = [...document.querySelectorAll('[role=treeitem][data-files-path]')]
+                    // Scoped to THIS tree: the sidebar also renders a sessions tree, and its rows
+                    // answer to the same role. Measuring across both put the anchor at the wrong
+                    // index, so the run was never found and the reader got a selection of one.
+                    const tree = clicked?.closest('[role=tree]') ?? null
+                    const rendered = [...(tree?.querySelectorAll('[data-files-path]') ?? [])]
                       .map(node => node.getAttribute('data-files-path') ?? '')
                     const from = rendered.indexOf(anchor.current)
                     const to = rendered.indexOf(row.path)
