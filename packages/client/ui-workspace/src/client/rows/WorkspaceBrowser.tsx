@@ -544,6 +544,13 @@ function SessionTree({
               /* v8 ignore next -- narrowing guard: the actions object exists only for real-workspace groups. */
                 if (group.workspaceId !== undefined) onDeleteRequest(group.workspaceId, group.label)
               },
+              // The group already carries the root the files slot is scoped to, so the path the
+              // reader copies is the same one the tree is showing them.
+              copyPath: () => {
+                const cwd = group.cwd
+                if (cwd === undefined || cwd === '') return
+                void navigator.clipboard.writeText(cwd)
+              },
             }}
         />
         {childRows.length > 0 && (
