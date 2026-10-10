@@ -52,6 +52,19 @@ export interface WorkspaceFileTreeInjected {
   listDirectory: (sessionId: SessionId, path: string, signal: AbortSignal) => Promise<WorkspaceTreeListing>
   /** Create one new file; rejects when the path is already occupied. */
   createFile: (sessionId: SessionId, path: string, content: string, signal: AbortSignal) => Promise<void>
+  /**
+   * Copy files the reader pasted into this workspace directory.
+   *
+   * Sources are absolute paths outside the workspace, read by the Host; destinations are
+   * built here from the source name, so a paste can only ever land where the tree shows.
+   * An occupied name is skipped and reported rather than replaced.
+   */
+  pasteFiles?: (
+    sessionId: SessionId,
+    sources: readonly string[],
+    directory: string,
+    signal: AbortSignal,
+  ) => Promise<{ pasted: readonly string[]; skipped: readonly string[] }>
   /** Create one new directory; rejects when the path is already occupied. */
   createDirectory: (sessionId: SessionId, path: string, signal: AbortSignal) => Promise<void>
   /**

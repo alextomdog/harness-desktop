@@ -88,6 +88,16 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
 }
 
 /** Dictionary namespace owned by this plugin. */
+/** Base64 of some bytes, chunked so a large file does not overflow the call stack. */
+function toBase64(data: Uint8Array): string {
+  let binary = ''
+  const CHUNK = 0x8000
+  for (let at = 0; at < data.length; at += CHUNK) {
+    binary += String.fromCharCode(...data.subarray(at, at + CHUNK))
+  }
+  return btoa(binary)
+}
+
 const NS = 'workspace'
 
 /**
@@ -290,6 +300,32 @@ export function apply(ctx: Context): void {
       const result = await ctx.remote.workspaceFiles.list(sessionId, path, signal)
       if (!result.ok) throw result.error
       return { path: result.value.path, entries: result.value.entries, truncated: result.value.truncated }
+    },
+    // Pasting files the reader copied in their file manager. The source is read by the Host,
+    // outside the workspace, which is what copying a file in means; the destination is built
+    // here from the source name alone, so a paste lands only where the tree already shows.
+    pasteFiles: async (sessionId, sources, directory, signal) => {
+      const pasted: string[] = []
+      const skipped: string[] = []
+      for (const source of sources) {
+        const name = source.split(/[\\/]/).pop() ?? ''
+        if (name === '') continue
+        const destination = directory === '' ? name : directory + '/' + name
+        const read = await ctx.remote.workspaceFiles.readBytes(sessionId, source, {}, signal)
+        if (!read.ok) throw read.error
+        try {
+          // An occupied path is refused, which is exactly the "do not overwrite" this needs.
+          const created = await ctx.remote.workspaceFiles.createFile(sessionId, destination, '', signal)
+          if (!created.ok) throw created.error
+        } catch {
+          skipped.push(name)
+          continue
+        }
+        const written = await ctx.remote.workspaceFiles.writeBytes(sessionId, destination, toBase64(read.value.data), undefined, signal)
+        if (!written.ok) throw written.error
+        pasted.push(name)
+      }
+      return { pasted, skipped }
     },
     createFile: async (sessionId, path, content, signal) => {
       const result = await ctx.remote.workspaceFiles.createFile(sessionId, path, content, signal)
