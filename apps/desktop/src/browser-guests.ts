@@ -1,5 +1,5 @@
 /** Main-process ownership and fixed isolation policy for Sidebar webview guests. */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { app, BrowserWindow, session, type Session, type WebContents } from 'electron'
 import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { offersPage } from './browser-pages.ts'
@@ -79,7 +79,7 @@ export class DesktopBrowserGuests {
     }
     let partition = this.partitions.get(workspace)
     if (partition === undefined) {
-      partition = `dsh-sidebar-browser-${randomUUID()}`
+      partition = `persist:dsh-sidebar-browser-${createHash('sha256').update(workspace).digest('hex').slice(0, 32)}`
       this.configureSession(session.fromPartition(partition))
       this.partitions.set(workspace, partition)
     }
