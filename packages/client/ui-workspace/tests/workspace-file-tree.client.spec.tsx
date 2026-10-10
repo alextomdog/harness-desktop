@@ -45,6 +45,39 @@ function mount(overrides: Partial<WorkspaceFileTreeProps> = {}) {
 }
 
 describe('WorkspaceFileTree', () => {
+  // KNOWN BUG, reproduced here: a Shift-click does not extend the selection. `aria-selected`
+  // reports ['false','false','true'] where a range would be ['true','true','true'], so the range
+  // branch never runs. Skipped only until it does; this is the reproduction.
+  it.skip('takes a range with Shift', async () => {
+    const listDirectory = listingSource({
+      '.': {
+        path: '',
+        truncated: false,
+        entries: [
+          { name: 'a.py', type: 'file' },
+          { name: 'b.py', type: 'file' },
+          { name: 'c.py', type: 'file' },
+        ],
+      },
+    })
+    mount({ listDirectory })
+
+    const rowOf = async (name: string): Promise<HTMLElement> =>
+      ((await screen.findByText(name)).closest('[role=treeitem]') as HTMLElement)
+    const first = await rowOf('a.py')
+    const last = await rowOf('c.py')
+
+    fireEvent.click(first)
+    fireEvent.click(last, { shiftKey: true })
+
+    // `aria-selected` reports the selection itself, with no drag involved: this separates "the
+    // range was never taken" from "the drag read a stale selection".
+    const selectedNames = ['a.py', 'b.py', 'c.py']
+      .map(name => screen.getByText(name).closest('[role=treeitem]'))
+      .map(node => node?.getAttribute('aria-selected'))
+    expect(selectedNames).toEqual(['true', 'true', 'true'])
+  })
+
   // KNOWN BUG, reproduced here: a Shift range is not taken, so a drag from the middle of one
   // carries only that row. Expected 'a.py\nb.py\nc.py'; it currently sends 'b.py'. The case stays
   // skipped only until the range works — deleting it would delete the reproduction.

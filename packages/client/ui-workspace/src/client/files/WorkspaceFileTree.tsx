@@ -549,10 +549,16 @@ export function WorkspaceFileTree({
                 setMenu({ row, left: event.clientX, top: event.clientY })
               }}
               onClick={(event) => {
-                const extended = event.shiftKey || event.ctrlKey || event.metaKey
+                // Read off the event NOW, into plain values. The updater below runs during the
+                // next render, and a React synthetic event read there has already been released:
+                // `event.shiftKey` comes back undefined, the range branch never runs, and a
+                // Shift-click silently becomes a click on one row.
+                const shift = event.shiftKey
+                const toggleOne = event.ctrlKey || event.metaKey
+                const extended = shift || toggleOne
                 setSelected(row.path)
                 setSelection((current) => {
-                  if (event.shiftKey && anchor.current !== null) {
+                  if (shift && anchor.current !== null) {
                     const ordered = rowsRef.current
                     const from = ordered.findIndex(candidate => candidate.path === anchor.current)
                     const to = ordered.findIndex(candidate => candidate.path === row.path)
@@ -560,7 +566,7 @@ export function WorkspaceFileTree({
                     const [start, end] = from <= to ? [from, to] : [to, from]
                     return new Set(ordered.slice(start, end + 1).map(candidate => candidate.path))
                   }
-                  if (event.ctrlKey || event.metaKey) {
+                  if (toggleOne) {
                     const next = new Set(current)
                     if (next.has(row.path)) next.delete(row.path)
                     else next.add(row.path)
