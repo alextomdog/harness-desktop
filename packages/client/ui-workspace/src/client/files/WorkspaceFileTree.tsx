@@ -522,6 +522,7 @@ export function WorkspaceFileTree({
               className={clsx(css.row, selection.has(row.path) && css.multiSelected, selected === row.path && css.selected)}
               role="treeitem"
               data-files-path={row.path}
+              data-files-anchor={anchor.current ?? undefined}
               aria-level={row.depth + 1}
               aria-selected={selection.has(row.path)}
               aria-expanded={directory ? open : undefined}
