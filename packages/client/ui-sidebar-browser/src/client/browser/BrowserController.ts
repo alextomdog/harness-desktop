@@ -1,11 +1,10 @@
 /** Carrier-independent tab commands and renderer-facing state. */
 import { createSnapshotStore, type BoundActions, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { BrowserFrameState } from './BrowserFrame.ts'
 import type { BrowserPage, BrowserPageFactory } from './BrowserPage.ts'
 import { currentBrowserTarget, type BrowserTabState } from './BrowserPersistence.ts'
-import type { BrowserStore } from './store.ts'
+import type { BrowserStore, BrowserSurfaceId } from './store.ts'
 import { parseBrowserAddress, type BrowserAddressFailure, type BrowserTarget } from './url.ts'
 
 /** Live tab state; navigation comes from its provider and draft validation stays local. */
@@ -19,7 +18,7 @@ export interface BrowserControllerState {
 
 /** Construction inputs for one tab occurrence. */
 export interface BrowserControllerOptions {
-  readonly tabId: TabId
+  readonly tabId: BrowserSurfaceId
   readonly signal: AbortSignal
   readonly applicationOrigin: string
   readonly initial: BrowserTabState | undefined
@@ -170,7 +169,7 @@ export class BrowserController implements HostObservable<BrowserControllerState>
 
 /** Values available once a Sidebar body has committed its content container. */
 export interface BrowserMountRequest {
-  readonly tabId: TabId
+  readonly tabId: BrowserSurfaceId
   readonly signal: AbortSignal
   readonly viewportId: string
   readonly applicationOrigin: string
@@ -191,17 +190,17 @@ export interface BrowserInjected {
   /** @param actions - writer from a recreated Session binding. */
   rebind(actions: BoundActions<BrowserStore>): void
   /** @param tabId - owning tab. @param value - address input. */
-  loadUrl(tabId: TabId, value: string): void
+  loadUrl(tabId: BrowserSurfaceId, value: string): void
   /** @param tabId - tab whose saved address the user requested to restore. */
-  restore(tabId: TabId): void
+  restore(tabId: BrowserSurfaceId): void
   /** @param tabId - owning tab. */
-  goBack(tabId: TabId): void
+  goBack(tabId: BrowserSurfaceId): void
   /** @param tabId - owning tab. */
-  goForward(tabId: TabId): void
+  goForward(tabId: BrowserSurfaceId): void
   /** Restore a saved address or reload its page. @param tabId - owning tab. */
-  reload(tabId: TabId): void
+  reload(tabId: BrowserSurfaceId): void
   /** @param tabId - owning tab. @param enabled - provider's optional sandbox control. */
-  setSandbox(tabId: TabId, enabled: boolean): void
+  setSandbox(tabId: BrowserSurfaceId, enabled: boolean): void
 }
 
 /**
@@ -212,16 +211,16 @@ export interface BrowserInjected {
  * @returns tab callbacks.
  */
 export function createBrowserControllers(actions: BoundActions<BrowserStore>, createPage: BrowserPageFactory,
-  isTabOpen: (tabId: TabId) => boolean): BrowserInjected {
+  isTabOpen: (tabId: BrowserSurfaceId) => boolean): BrowserInjected {
   let currentActions = actions
-  const controllers = new Map<TabId, {
+  const controllers = new Map<BrowserSurfaceId, {
     readonly signal: AbortSignal
     readonly controller: BrowserController
     readonly forget: () => void
   }>()
-  const controller = (id: TabId): BrowserController | undefined => controllers.get(id)?.controller
+  const controller = (id: BrowserSurfaceId): BrowserController | undefined => controllers.get(id)?.controller
   return {
-    keyedHooks: { browserState: key => controller(key as TabId) },
+    keyedHooks: { browserState: key => controller(key as BrowserSurfaceId) },
     mount(request) {
       const { tabId, signal } = request
       if (signal.aborted) return () => {}
