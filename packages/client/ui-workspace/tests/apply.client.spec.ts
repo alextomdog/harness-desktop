@@ -621,4 +621,25 @@ describe('ui-workspace apply', () => {
     expect(b.slots.entries(ROW_ACTION)).toHaveLength(0)
     expect(b.slots.entries('shell.overlay')).toHaveLength(0)
   })
+  it('exposes a paste that builds its destination from the source name alone', async () => {
+    const b = await bench()
+    onTestFinished(() => b.ctx.fiber.dispose())
+    // The tree registers when its slot is declared, so the declaration comes first — the same
+    // order the seat itself relies on.
+    // The helper's name type lists the holes, and this slot is not one of them; at runtime it takes
+    // the name exactly as the seat does, which is what this case depends on.
+    declare(b.slots, 'sidebar.workspaces.files' as never)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    // The tree does no I/O of its own: it is handed this face, so this is the seam the paste
+    // travels through, and the one worth holding to its contract.
+    const face = faceOf(b.slots.entries('sidebar.workspaces.files')[0]!) as unknown as {
+      pasteFiles?: (
+        sessionId: SessionId,
+        sources: readonly string[],
+        directory: string,
+        signal: AbortSignal,
+      ) => Promise<{ pasted: readonly string[]; skipped: readonly string[] }>
+    }
+    expect(typeof face.pasteFiles).toBe('function')
+  })
 })
