@@ -50,6 +50,14 @@ export const zh = {
   'quote.label': '引用选中内容',
   'quote.noSession': '没有可引用的会话',
   'quote.noSelection': '先选中一段文字',
+  'editor.find.findAria': '查找',
+  'editor.find.findPlaceholder': '查找…',
+  'editor.find.next': '下一个',
+  'editor.find.replaceAria': '替换为',
+  'editor.find.replacePlaceholder': '替换为…',
+  'editor.find.replaceOne': '替换',
+  'editor.find.replaceAll': '全部替换',
+  'editor.find.close': '关闭查找',
 } satisfies Record<string, string>
 
 /** Text-preview dictionary key union. */
@@ -99,4 +107,12 @@ export const en = {
   'quote.label': 'Quote selection',
   'quote.noSession': 'No conversation to quote into',
   'quote.noSelection': 'Select some text first',
+  'editor.find.findAria': 'Find',
+  'editor.find.findPlaceholder': 'Find…',
+  'editor.find.next': 'Next',
+  'editor.find.replaceAria': 'Replace with',
+  'editor.find.replacePlaceholder': 'Replace…',
+  'editor.find.replaceOne': 'Replace',
+  'editor.find.replaceAll': 'Replace all',
+  'editor.find.close': 'Close find',
 } satisfies Record<SidebarDocumentPreviewKey, string>
