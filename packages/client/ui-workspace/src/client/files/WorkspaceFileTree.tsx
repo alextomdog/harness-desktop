@@ -16,6 +16,20 @@
  * on a Session.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+/**
+ * The desktop preload bridge, as this tree needs it.
+ *
+ * Only the one call is named: the tree has no business with the rest of the bridge, and a
+ * narrow face here keeps it that way. Absent in a browser build, which is why it is optional.
+ */
+declare global {
+  interface Window {
+    readonly dshDesktop?: {
+      readonly readClipboardFiles?: () => Promise<readonly string[]>
+    }
+  }
+}
 import clsx from 'clsx'
 import {
   Button, classifyFileType, FileTypeIcon,
@@ -206,7 +220,7 @@ function createParent(row: Row): string {
  * @param props - owner Session, locale, and the filesystem actions.
  */
 export function WorkspaceFileTree({
-  sessionId, workspaceRoot, t, listDirectory, createFile, createDirectory, renameEntry, deleteEntry, openFile,
+  sessionId, workspaceRoot, t, listDirectory, createFile, createDirectory, renameEntry, deleteEntry, pasteFiles, openFile,
 }: WorkspaceFileTreeProps) {
   const [directories, setDirectories] = useState<ReadonlyMap<string, DirectoryState>>(new Map())
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
@@ -346,6 +360,18 @@ export function WorkspaceFileTree({
     void navigator.clipboard.writeText(text).catch(() => {})
     setMenu(null)
   }, [])
+
+  // Files the reader copied in their file manager, landing in one directory. The Host
+  // reads the sources — they are outside the workspace by definition — and the destination
+  // is built from each source name, so this can only write where the tree already shows.
+  const runPaste = useCallback(async (directoryPath: string): Promise<void> => {
+    const readClipboard = window.dshDesktop?.readClipboardFiles
+    if (pasteFiles === undefined || readClipboard === undefined) return
+    const sources = await readClipboard()
+    if (sources.length === 0) return
+    await pasteFiles(sessionId, sources, directoryPath, lifetime.current.signal)
+    await load(directoryPath, lifetime.current.signal)
+  }, [load, pasteFiles, sessionId])
 
   const beginCreate = useCallback((next: NameRequest): void => {
     setMenu(null)
@@ -618,6 +644,14 @@ export function WorkspaceFileTree({
                 else openFile?.(sessionId, row.path)
               }}
               onKeyDown={(event) => {
+                // Ctrl+V pastes what the file manager holds: a folder takes the files inside itself, a
+                // file takes them beside itself, which is what either gesture means in an explorer.
+                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && pasteFiles !== undefined) {
+                  event.preventDefault()
+                  const cut = Math.max(row.path.lastIndexOf('/'), row.path.lastIndexOf('\\'))
+                  void runPaste(directory ? row.path : row.path.slice(0, cut + 1))
+                  return
+                }
                 // F2 is the editor's rename gesture; the row acts on its own.
                 if (event.key === 'F2') {
                   event.preventDefault()
