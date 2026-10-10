@@ -51,19 +51,3 @@ export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
 export function isThemePreference(value: unknown): value is ThemePreference {
   return THEME_PREFERENCES.some(preference => preference === value)
 }
-
-/**
- * The document editor's own typography, kept apart from the conversation's.
- *
- * The editor is a work surface rather than a reading one: someone writing code wants a size and a
- * face of their own, and changing the conversation's size must not move the lines they are reading.
- */
-export const EDITOR_FONT_FAMILY_FIELD = 'editorFontFamily'
-export const EDITOR_FONT_SIZE_FIELD = 'editorFontSize'
-export const EDITOR_FONT_SIZE_MIN = 9
-export const EDITOR_FONT_SIZE_MAX = 32
-export const DEFAULT_EDITOR_FONT_SIZE = 12
-/** Faces offered by name; each resolves to a stack in the editor's own stylesheet. */
-export const EDITOR_FONT_FAMILIES = ['mono', 'sans', 'serif'] as const
-export type EditorFontFamily = (typeof EDITOR_FONT_FAMILIES)[number]
-export const DEFAULT_EDITOR_FONT_FAMILY: EditorFontFamily = 'mono'
