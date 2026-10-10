@@ -1,16 +1,23 @@
 /** Persisted Browser tab snapshots shared by the body and title slots. */
+/**
+ * Identity of one browsing surface, wherever it is shown.
+ *
+ * Deliberately a plain string rather than the dock's branded tab identity: a surface is not
+ * necessarily a dock tab — a conversation view can show one too — and this store only ever uses the
+ * value as an opaque key. Widening it here is what lets a tab's own identity flow in without a cast.
+ */
+export type BrowserSurfaceId = string
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
-import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { BrowserTabState } from './BrowserPersistence.ts'
 
 /** All Browser tabs in one Session-scoped store. */
 export interface BrowserState {
-  byTab: Record<TabId, BrowserTabState>
+  byTab: Record<BrowserSurfaceId, BrowserTabState>
 }
 
 type BrowserActions = {
-  replace: (draft: BrowserState, tabId: TabId, state: BrowserTabState) => void
-  forget: (draft: BrowserState, tabId: TabId) => void
+  replace: (draft: BrowserState, surfaceId: BrowserSurfaceId, state: BrowserTabState) => void
+  forget: (draft: BrowserState, surfaceId: BrowserSurfaceId) => void
 }
 
 /**
@@ -22,11 +29,11 @@ export function createBrowserStore(): EngineStoreHandle<BrowserState, BrowserAct
     init: (): BrowserState => ({ byTab: {} }),
     persist: 'dsh.sidebar-browser.v1',
     actions: {
-      replace: (draft, tabId: TabId, state: BrowserTabState) => { draft.byTab[tabId] = state },
-      forget: (draft, tabId: TabId) => {
+      replace: (draft, surfaceId: BrowserSurfaceId, state: BrowserTabState) => { draft.byTab[surfaceId] = state },
+      forget: (draft, surfaceId: BrowserSurfaceId) => {
         const byTab: BrowserState['byTab'] = {}
-        for (const [id, state] of Object.entries(draft.byTab) as [TabId, BrowserTabState][]) {
-          if (id !== tabId) byTab[id] = state
+        for (const [id, state] of Object.entries(draft.byTab) as [BrowserSurfaceId, BrowserTabState][]) {
+          if (id !== surfaceId) byTab[id] = state
         }
         draft.byTab = byTab
       },
