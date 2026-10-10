@@ -1,6 +1,8 @@
 /** Common browser chrome; a presentation adapter attaches the page inside its content container. */
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
+import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
+import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import {
   Button,
   IconChevronLeftOutlineRegular,
@@ -37,23 +39,48 @@ export type BrowserBodyProps = PropsRuntime<'sidebar.right.pane.tab'>
   & PropsLocale<'sidebarBrowser'>
   & InjectFace<BrowserInjected>
 
+/**
+ * What a browser body needs of the seat showing it.
+ *
+ * Everything else the body reads — the plugin face, the store, the copy — any seat can supply.
+ * These few are the seat itself: which surface this is, how to stop, what it opened with, and the
+ * two things the surface can do. Naming them is what lets a second seat render the same body
+ * without either side pretending to be the other.
+ */
+export interface BrowserSurface {
+  readonly id: TabId
+  readonly signal: AbortSignal
+  readonly initialUrl?: string | undefined
+  readonly refreshShortcut?: ShortcutCatalogEntry | undefined
+  /** Bind the seat's refresh command. */
+  bindRefresh(run: () => void): void
+  /** Open another surface beside this one. */
+  openTab(url: string): void
+}
+
+/** Body props with the seat's own tab replaced by the surface it stands for. */
+export type BrowserSurfaceBodyProps = Omit<PropsRuntime<'sidebar.right.pane.tab'>, 'useTabInfo'>
+  & PropsStore<BrowserStore>
+  & PropsLocale<'sidebarBrowser'>
+  & InjectFace<BrowserInjected>
+  & { readonly surface: BrowserSurface }
+
 function useBrowserDraft(url: string | undefined, revision: number): readonly [string, (value: string) => void] {
   const [edit, setEdit] = useState<{ readonly revision: number; readonly value: string }>()
   return [edit?.revision === revision ? edit.value : url ?? '',
     (value) => { setEdit({ revision, value }) }]
 }
 
-/** Render provider-neutral navigation state and optional controls. */
-export function BrowserBody(props: BrowserBodyProps): ReactNode {
-  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, useBrowserState, useStore, useTabInfo, t } = props
-  const { tab } = useTabInfo()
-  useEffect(() => tab.actions.bindCommands({ refresh: () => { reload(tab.id) } }), [tab.actions, tab.id, reload])
-  const saved = useStore(state => state.byTab[tab.id])
+/** Render provider-neutral navigation state and optional controls over one surface. */
+export function BrowserSurfaceBody(props: BrowserSurfaceBodyProps): ReactNode {
+  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, useBrowserState, useStore, t, surface } = props
+  useEffect(() => surface.bindRefresh(() => { reload(surface.id) }), [surface, reload])
+  const saved = useStore(state => state.byTab[surface.id])
   const initial = useRef(saved)
-  const initialUrl = useRef(tab.navigation.params?.url)
+  const initialUrl = useRef(surface.initialUrl)
   const viewportId = useId()
   const [mountEpoch, setMountEpoch] = useState(0)
-  const state = useBrowserState(tab.id)
+  const state = useBrowserState(surface.id)
   const frame = state?.frame ?? EMPTY_FRAME
   const restoreTarget = state === undefined ? currentBrowserTarget(initial.current) : state.restoreTarget
   const target = frame.target ?? restoreTarget
@@ -61,28 +88,28 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
 
   useLayoutEffect(() => {
     const hide = mount({
-      tabId: tab.id, signal: tab.signal, viewportId, applicationOrigin: window.location.origin,
+      tabId: surface.id, signal: surface.signal, viewportId, applicationOrigin: window.location.origin,
       initial: initial.current, initialUrl: initialUrl.current,
-      openTab: (url) => { tab.actions.openTab('browser', { params: { url }, revealIfOpened: false }) },
+      openTab: (url) => { surface.openTab(url) },
     })
     setMountEpoch(value => value + 1)
     return hide
-  }, [mount, tab.id, tab.signal, tab.actions, viewportId, props.actions])
+  }, [mount, surface, viewportId, props.actions])
 
   const unknown = frame.address === 'unknown'
   const externalUrl = unknown ? undefined : target?.url
   const sandboxed = frame.sandboxEnabled
   const failure = state?.addressFailure
   const error = frame.error
-  const submit = (event: FormEvent): void => { event.preventDefault(); loadUrl(tab.id, draft) }
+  const submit = (event: FormEvent): void => { event.preventDefault(); loadUrl(surface.id, draft) }
 
   return (
     <div className={css.root}>
       <form className={css.toolbar} onSubmit={submit}>
-        <button type="button" className={css.tool} aria-label={t('back')} title={t('back')} disabled={!frame.canGoBack} onClick={() => { goBack(tab.id) }}><IconChevronLeftOutlineRegular /></button>
-        <button type="button" className={css.tool} aria-label={t('forward')} title={t('forward')} disabled={!frame.canGoForward} onClick={() => { goForward(tab.id) }}><IconChevronRightOutlineRegular /></button>
-        <Tooltip label={t('reload')} shortcutKeys={tab.refreshShortcut?.keys} side="bottom" delayMs={500}>
-          <button type="button" className={css.tool} aria-label={t('reload')} aria-keyshortcuts={tab.refreshShortcut?.aria} disabled={target === undefined || mountEpoch === 0} onClick={() => { reload(tab.id) }}><IconRefreshOutlineRegular /></button>
+        <button type="button" className={css.tool} aria-label={t('back')} title={t('back')} disabled={!frame.canGoBack} onClick={() => { goBack(surface.id) }}><IconChevronLeftOutlineRegular /></button>
+        <button type="button" className={css.tool} aria-label={t('forward')} title={t('forward')} disabled={!frame.canGoForward} onClick={() => { goForward(surface.id) }}><IconChevronRightOutlineRegular /></button>
+        <Tooltip label={t('reload')} shortcutKeys={surface.refreshShortcut?.keys} side="bottom" delayMs={500}>
+          <button type="button" className={css.tool} aria-label={t('reload')} aria-keyshortcuts={surface.refreshShortcut?.aria} disabled={target === undefined || mountEpoch === 0} onClick={() => { reload(surface.id) }}><IconRefreshOutlineRegular /></button>
         </Tooltip>
         <div className={css.addressBox}>
           <input
@@ -105,7 +132,7 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
           aria-label={t(sandboxed ? 'sandbox.disable' : 'sandbox.enable')}
           title={t(sandboxed ? 'sandbox.disable' : 'sandbox.enable')}
           aria-pressed={!sandboxed}
-          onClick={() => { setSandbox(tab.id, !sandboxed) }}
+          onClick={() => { setSandbox(surface.id, !sandboxed) }}
         ><SandboxPolicyIcon sandboxed={sandboxed} /></button>}
       </form>
       {sandboxed === false && <div className={css.sandboxWarning} role="status">{t('sandbox.warning')}</div>}
@@ -119,7 +146,7 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
           <p className={css.restoreLabel}>{t('restore.previous')}</p>
           <p className={css.restoreTitle}>{restoreTarget.title}</p>
           <p className={css.restoreUrl}>{restoreTarget.url}</p>
-          <Button variant="primary" size="sm" disabled={mountEpoch === 0} onClick={() => { restore(tab.id) }}>
+          <Button variant="primary" size="sm" disabled={mountEpoch === 0} onClick={() => { restore(surface.id) }}>
             {t('restore.action')}
           </Button>
         </section>}
@@ -130,4 +157,24 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
       {unknown && <p className={css.limit}>{t('address.unknown')}</p>}
     </div>
   )
+}
+
+/**
+ * The right Sidebar's seat: its tab, described as a surface.
+ *
+ * The description is memoized on the tab, so the body's mount effect sees a stable surface and does
+ * not remount the page on every render — which is what the tab object already gave it.
+ */
+export function BrowserBody(props: BrowserBodyProps): ReactNode {
+  const { useTabInfo } = props
+  const { tab } = useTabInfo()
+  const surface = useMemo<BrowserSurface>(() => ({
+    id: tab.id,
+    signal: tab.signal,
+    initialUrl: tab.navigation.params?.url,
+    refreshShortcut: tab.refreshShortcut,
+    bindRefresh: (run) => { tab.actions.bindCommands({ refresh: run }) },
+    openTab: (url) => { tab.actions.openTab('browser', { params: { url }, revealIfOpened: false }) },
+  }), [tab])
+  return <BrowserSurfaceBody {...props} surface={surface} />
 }
