@@ -452,4 +452,44 @@ describe('WorkspaceFileTree', () => {
     fireEvent.click(screen.getByText('files.open'))
     expect(openFile).toHaveBeenCalledWith(sessionId, 'a.md')
   })
+  // The paste contract: the row decides WHICH directory receives the files, because that is
+  // the part the reader sees. The write itself is the plugin's, and its refusal of an
+  // occupied name is what keeps a paste from replacing something.
+  it('pastes what the file manager holds into the row the reader asked', async () => {
+    const pasteFiles = vi.fn(async (
+      _sessionId: SessionId,
+      _sources: readonly string[],
+      _directory: string,
+      _signal: AbortSignal,
+    ): Promise<{ pasted: readonly string[]; skipped: readonly string[] }> => ({ pasted: [], skipped: [] }))
+    const readClipboardFiles = vi.fn(async () => ['C:\\work\\a.py'])
+    ;(window as unknown as { dshDesktop?: unknown }).dshDesktop = { readClipboardFiles }
+    const listDirectory = listingSource({
+      '.': {
+        path: '',
+        truncated: false,
+        entries: [
+          { name: 'figures', type: 'directory' },
+          { name: 'a.py', type: 'file' },
+        ],
+      },
+      figures: { path: 'figures', truncated: false, entries: [] },
+    })
+    mount({ pasteFiles, listDirectory })
+    const folder = await screen.findByText('figures')
+    const row = folder.closest('[role=treeitem]')
+    expect(row).not.toBeNull()
+    fireEvent.keyDown(row!, { key: 'v', ctrlKey: true })
+    // Called at all, first: a test that only compares an empty call list would pass while
+    // nothing happened, which is exactly the mistake this case was written to prevent.
+    await vi.waitFor(() => { expect(pasteFiles).toHaveBeenCalled() })
+    expect(pasteFiles.mock.calls[0]?.[1]).toEqual(['C:\\work\\a.py'])
+    // A folder takes the files inside itself.
+    expect(pasteFiles.mock.calls[0]?.[2]).toBe('figures')
+    // And a file takes them beside itself, in its own directory.
+    const file = await screen.findByText('a.py')
+    fireEvent.keyDown(file.closest('[role=treeitem]')!, { key: 'v', ctrlKey: true })
+    await vi.waitFor(() => { expect(pasteFiles.mock.calls.length).toBe(2) })
+    expect(pasteFiles.mock.calls[1]?.[2]).toBe('')
+  })
 })
