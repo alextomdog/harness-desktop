@@ -560,10 +560,15 @@ export function WorkspaceFileTree({
                 // The element this click landed on, read NOW for the same reason the keys are: a
                 // synthetic event is released by the time the updater below runs.
                 const clicked = event.currentTarget as HTMLElement | null
+                // The anchor is read HERE for the same reason, and this is the one that mattered:
+                // the line that writes it below runs synchronously, while the updater below runs
+                // at the NEXT render — by which time the anchor has already become the row being
+                // clicked. Every range therefore measured from that row to itself: one row, always.
+                const anchorPath = anchor.current
                 const extended = shift || toggleOne
                 setSelected(row.path)
                 setSelection((current) => {
-                  if (shift && anchor.current !== null) {
+                  if (shift && anchorPath !== null) {
                     // The run is measured over the rows AS RENDERED, read from the DOM: the list a
                     // closure holds can be a render behind, and a range measured against a list
                     // that no longer matches what the reader sees is a range that finds nothing.
@@ -573,7 +578,7 @@ export function WorkspaceFileTree({
                     const tree = clicked?.closest('[role=tree]') ?? null
                     const rendered = [...(tree?.querySelectorAll('[data-files-path]') ?? [])]
                       .map(node => node.getAttribute('data-files-path') ?? '')
-                    const from = rendered.indexOf(anchor.current)
+                    const from = rendered.indexOf(anchorPath)
                     const to = rendered.indexOf(row.path)
                     if (from === -1 || to === -1) return new Set([row.path])
                     const [start, end] = from <= to ? [from, to] : [to, from]

@@ -49,7 +49,7 @@ describe('WorkspaceFileTree', () => {
   // KNOWN BUG, reproduced here: a Shift-click does not extend the selection. `aria-selected`
   // reports ['false','false','true'] where a range would be ['true','true','true'], so the range
   // branch never runs. Skipped only until it does; this is the reproduction.
-  it.skip('takes a range with Shift', async () => {
+  it('takes a range with Shift', async () => {
     const listDirectory = listingSource({
       '.': {
         path: '',
@@ -85,7 +85,7 @@ describe('WorkspaceFileTree', () => {
   // KNOWN BUG, reproduced here: a Shift range is not taken, so a drag from the middle of one
   // carries only that row. Expected 'a.py\nb.py\nc.py'; it currently sends 'b.py'. The case stays
   // skipped only until the range works — deleting it would delete the reproduction.
-  it.skip('drags every row the reader has taken, not just the one under the pointer', async () => {
+  it('drags every row the reader has taken, not just the one under the pointer', async () => {
     const listDirectory = listingSource({
       '.': {
         path: '',
