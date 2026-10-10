@@ -21,6 +21,7 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
 import type { WorkspaceFileParams } from '@deepseek-ai/dsh-api-workspace-files/client'
 import { TextPreview } from './TextPreview.tsx'
+import { CopyPathItem } from './CopyPathItem.tsx'
 import type { TextPreviewInjected } from './TextPreview.tsx'
 import { TextTitle } from './TextTitle.tsx'
 import { TEXTPREVIEW_ID, TEXTPREVIEW_KIND, textDefinition } from './definition.ts'
@@ -123,6 +124,12 @@ export function apply(ctx: ClientContext): void {
     (file, content, expectedVersion, signal) => createWriteFile(ctx.remote, file)(content, expectedVersion, signal),
   )
   const source = { getSnapshot: previews.getSnapshot, subscribe: previews.subscribe }
+  // Through `effect`, like every registration beside it: a contribution that outlives its plugin
+  // keeps answering with a context that is gone.
+  ctx.effect(() => ctx.slots.inject('sidebar.right.tab.menu.item', () => ctx.slots.register(
+    { name: 'sidebar.right.tab.menu.item', id: 'copy-path', order: 90 },
+    CopyPathItem,
+  )))
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     {
       name: 'sidebar.right.pane.tab', key: TEXTPREVIEW_ID, locale: NS, store,

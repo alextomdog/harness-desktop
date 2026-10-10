@@ -1,0 +1,12 @@
+/* The dock's own menu item, mirrored: this item is contributed into that menu, and the kit's class
+   belongs to the kit. The values are the dock's, so the two kinds of item read as one menu. */
+.item {
+  padding: 4px 7px;
+  color: var(--dsw-alias-label-primary);
+  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  cursor: pointer;
+}

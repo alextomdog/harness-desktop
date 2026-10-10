@@ -18,6 +18,7 @@ import { apply, inject } from '../src/client/index.ts'
 import { OfficeFontAction } from '../src/client/office/OfficeFontAction.tsx'
 import { OfficeBody } from '../src/client/office/OfficeBody.tsx'
 import { TextPreview } from '../src/client/TextPreview.tsx'
+import { CopyPathItem } from '../src/client/CopyPathItem.tsx'
 import { TextTitle } from '../src/client/TextTitle.tsx'
 import { TextBody } from '../src/client/text/TextBody.tsx'
 import { PLAIN_BODY_ID } from '../src/client/text/index.ts'
@@ -89,6 +90,9 @@ describe('ui-sidebar-documentpreview apply', () => {
     // The seat key is the implementation's id, not the kind: an extension may
     // take the kind over, and the seat must still find this body.
     expect(registered.map(entry => [entry.name, entry.key, entry.locale, entry.component])).toEqual([
+      // Contributed through the tab menu slot: this plugin is the seat that knows a document
+      // tab is a file, and every other kind of tab renders nothing here.
+      ['sidebar.right.tab.menu.item', undefined, undefined, CopyPathItem],
       ['sidebar.right.pane.tab', TEXTPREVIEW_ID, 'sidebarDocumentPreview', TextPreview],
       // The title carries the locale and the store too: the unsaved dot it draws
       // is one fact about the tab, read from the same store the body writes.
@@ -104,8 +108,8 @@ describe('ui-sidebar-documentpreview apply', () => {
       ['sidebar.right.tab.document', '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/excel', 'sidebarExcel', LazyExcelBody],
       ['sidebar.right.tab.document', '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/code', 'sidebarCodePreview', CodeBody],
     ])
-    expect(registered[0]?.store).toBeDefined()
-    expect(typeof registered[0]?.inject).toBe('function')
+    expect(registered[1]?.store).toBeDefined()
+    expect(typeof registered[1]?.inject).toBe('function')
   })
 
   it('takes every registration back when the plugin is disposed', async () => {
