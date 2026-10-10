@@ -431,6 +431,16 @@ export function TextPreview({
             // The dock refused the close; these are the two answers, and saving stays the
             // editor's own Ctrl+S so the file is written one way and only one way.
             closePrompt={state?.closePrompt === true}
+            findLabels={{
+              findAria: t('editor.find.findAria'),
+              findPlaceholder: t('editor.find.findPlaceholder'),
+              next: t('editor.find.next'),
+              replaceAria: t('editor.find.replaceAria'),
+              replacePlaceholder: t('editor.find.replacePlaceholder'),
+              replaceOne: t('editor.find.replaceOne'),
+              replaceAll: t('editor.find.replaceAll'),
+              close: t('editor.find.close'),
+            }}
             closeLabels={{
               message: t('close.unsaved'),
               save: t('close.saveAndClose'),

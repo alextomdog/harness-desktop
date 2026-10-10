@@ -28,6 +28,7 @@ import {
   useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode,
 } from 'react'
 import { FindBar } from './FindBar.tsx'
+import type { FindBarLabels } from './FindBar.tsx'
 import { useFind } from './useFind.ts'
 import { useCodeHighlighter } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HighlightSpan } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -45,16 +46,6 @@ const INDENT = '    '
  * TODO(locale): these belong in the editor's label seat beside the save strings, so a
  * translated build does not show Chinese here. Kept local for now so the feature is whole.
  */
-const FIND_LABELS = {
-  findAria: '查找',
-  findPlaceholder: '查找…',
-  next: '下一个',
-  replaceAria: '替换为',
-  replacePlaceholder: '替换为…',
-  replaceOne: '替换',
-  replaceAll: '全部替换',
-  close: '关闭查找',
-} as const
 
 /** Copy the editor shows. */
 export interface EditableTextLabels {
@@ -87,6 +78,8 @@ export interface EditableTextBodyProps {
   /** Whether a close was refused because this tab still holds unsaved edits. */
   readonly closePrompt?: boolean
   /** The close question's own words, translated by the caller. */
+  /** The find bar copy; absent means this editor offers no bar. */
+  readonly findLabels?: FindBarLabels
   readonly closeLabels?: {
     readonly message: string
     readonly save: string
@@ -104,7 +97,7 @@ export interface EditableTextBodyProps {
  * @returns the highlighted editable surface, its save state, and the conflict's choices.
  */
 export function EditableTextBody({
-  text, version, language, save, reload, onDirty, labels, closePrompt, closeLabels, onResolveClose, onRequestClose,
+  text, version, language, save, reload, onDirty, labels, closePrompt, closeLabels, findLabels, onResolveClose, onRequestClose,
 }: EditableTextBodyProps): ReactNode {
   const [buffer, setBuffer] = useState(text)
   const [state, setState] = useState<SaveState>('clean')
@@ -283,12 +276,12 @@ export function EditableTextBody({
           : ''
   return (
     <div className={css.editor} data-textpreview-editor>
-      {find.open && (
+      {find.open && findLabels !== undefined && (
         <FindBar
           query={find.query}
           replacement={find.replacement}
           replacing={find.replacing}
-          labels={FIND_LABELS}
+          labels={findLabels}
           onQuery={find.setQuery}
           onReplacement={find.setReplacement}
           onNext={() => { find.step(1) }}
