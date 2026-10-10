@@ -7,6 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { BrowserBody } from '../src/client/view/BrowserBody.tsx'
+import { WebView } from '../src/client/view/WebView.tsx'
 import { BrowserTitle } from '../src/client/view/BrowserTitle.tsx'
 import type { BrowserInjected } from '../src/client/browser/BrowserController.ts'
 import { BROWSER_ID, BROWSER_KIND } from '../src/client/definition.tsx'
@@ -133,6 +134,8 @@ describe('ui-sidebar-browser apply', () => {
     })
     expect(registered.map(entry => [entry.name, entry.key, entry.locale, entry.component])).toEqual([
       ['sidebar.right.pane.tab', BROWSER_ID, 'sidebarBrowser', BrowserBody],
+      // The same browser, seated by the Conversation's own view.
+      ['conversation.view', undefined, 'sidebarBrowser', WebView],
       ['sidebar.right.pane.tab.title', BROWSER_ID, undefined, BrowserTitle],
     ])
     expect(registered[0]?.store).toBeDefined()

@@ -1,6 +1,7 @@
 /** Locale-owned Browser tab copy. */
 export const zh = {
   'type.label': '浏览器',
+  'view.web': '网页',
   'guide.title': '浏览器',
   'guide.description': '浏览网页',
   'shortcut.noSession': '请先打开一个会话',
@@ -34,6 +35,7 @@ export type SidebarBrowserKey = keyof typeof zh
 /** English dictionary with the same keys. */
 export const en = {
   'type.label': 'Browser',
+  'view.web': 'Web',
   'guide.title': 'Browser',
   'guide.description': 'Browse web pages',
   'shortcut.noSession': 'Open a session first',

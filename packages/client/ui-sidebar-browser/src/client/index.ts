@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { BrowserBody, type BrowserBodyProps } from './view/BrowserBody.tsx'
+import { WebView } from './view/WebView.tsx'
 import { BrowserTitle } from './view/BrowserTitle.tsx'
 import { createBrowserControllers } from './browser/BrowserController.ts'
 import type { BrowserInjected } from './browser/BrowserController.ts'
@@ -93,6 +94,24 @@ export function apply(ctx: Context): void {
         return controller
       },
     }, BrowserBody)), 'ui-sidebar-browser.body')
+    // The same browser, seated in the Conversation as its 「网页」 view. It reuses this
+    // scope's controllers and factory, so the two seats share one browser per Session —
+    // which is right, because the state is keyed by surface and the surfaces differ.
+    scope.effect(() => scope.slots.inject('conversation.view', () => scope.slots.register({
+      name: 'conversation.view', id: 'web', order: 20, locale: namespace, store,
+      label: () => t('view.web'),
+      inject: (sessionId, actions) => {
+        const existing = controllers.get(sessionId)
+        if (existing !== undefined) {
+          existing.rebind(actions)
+          return existing
+        }
+        const controller = createBrowserControllers(actions, factory(sessionId), tabId =>
+          openTabs.getSnapshot().some(tab => tab.sessionId === sessionId && tab.tabId === tabId))
+        controllers.set(sessionId, controller)
+        return controller
+      },
+    }, WebView)), 'ui-sidebar-browser.webView')
   }
   if (desktop === undefined) installFrames(ctx, () => createIframePage)
   else ctx.inject(['workspaces'], (scope) => {
