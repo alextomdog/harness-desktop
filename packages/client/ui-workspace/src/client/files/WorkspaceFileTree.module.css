@@ -341,3 +341,17 @@
 .multiSelected {
   background: var(--dsh-surface-hover, rgb(0 0 0 / 5%));
 }
+/* Aligned with the sessions header beside it.
+   Measured before this was written: the sessions row is 20px tall with a 16px left inset, and this
+   one was 24px tall with 2px — so the two labels sat at x=42 and x=28 and the sections read as two
+   columns instead of one. The numbers below are those measurements, not a guess. */
+.header {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.headerToggle {
+  min-height: 20px;
+  padding: 0 2px 0 16px;
+  align-items: center;
+}
