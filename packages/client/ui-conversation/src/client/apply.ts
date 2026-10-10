@@ -501,13 +501,19 @@ export function apply(ctx: Context, config: Config = Config({})): void {
           if (shell.snapshot.phase === 'adjudicating' || shell.snapshot.phase === 'submitting') {
             return t('attachment.dropBlocked')
           }
+          const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
           const references: ReferenceInsert[] = []
           for (const path of paths) {
             // A path is not an upload: the reader is naming a file the workspace already holds,
             // so the chip carries the path itself. A trailing slash is how the tree marks a
             // folder, and it is also what the mention grammar needs to name one.
             const directory = path.endsWith('/')
-            const mention = formatFileMention({ path, kind: 'file' }, false)
+            // Relativized against THIS session's workspace, exactly as an uploaded file is. A path
+            // from another workspace stays absolute, because a name that means one file here and
+            // another there is worse than a long one.
+            const local = relativizeToCwd(directory ? path.slice(0, -1) : path, cwd)
+            const named = directory ? `${local}/` : local
+            const mention = formatFileMention({ path: named, kind: 'file' }, false)
             if (mention === undefined) return t('attachment.pathUnsupported')
             const label = workspaceTitleOf(path.replace(/\/$/u, '')) || path
             references.push({

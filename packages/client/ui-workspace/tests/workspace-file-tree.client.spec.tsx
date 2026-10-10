@@ -120,6 +120,21 @@ describe('WorkspaceFileTree', () => {
     expect({ payload }).toEqual({ payload: 'a.py\nb.py\nc.py' })
   })
 
+  it('offers an absolute path, so a drag into another workspace names the right file', async () => {
+    const listDirectory = listingSource({
+      '.': { path: '', truncated: false, entries: [{ name: 'a.py', type: 'file' }] },
+    })
+    // A workspace root of its own: a relative path would mean a different file in a
+    // conversation whose workspace is elsewhere.
+    mount({ listDirectory, workspaceRoot: 'D:/ws-a' })
+    const row = ((await screen.findByText('a.py')).closest('[role=treeitem]') as HTMLElement)
+    fireEvent.click(row)
+    const transfer = { setData: vi.fn(), effectAllowed: '' }
+    fireEvent.dragStart(row, { dataTransfer: transfer })
+    const payload = (transfer.setData as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[1]
+    expect({ payload }).toEqual({ payload: 'D:/ws-a/a.py' })
+  })
+
   it('drags only the row under the pointer when it is not part of a selection', async () => {
     const listDirectory = listingSource({
       '.': {

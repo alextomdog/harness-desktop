@@ -539,8 +539,14 @@ export function WorkspaceFileTree({
                 const taken = selection.has(row.path)
                   ? rows.filter(candidate => selection.has(candidate.path))
                   : [row]
+                // ABSOLUTE paths, because the workspace root they are relative to is this tree's,
+                // not the composer's: a relative path dragged into another workspace's conversation
+                // names a different file, or none. The composer relativizes what it can.
                 event.dataTransfer.setData('text/plain', taken
-                  .map(candidate => candidate.type === 'directory' ? `${candidate.path}/` : candidate.path)
+                  .map((candidate) => {
+                    const full = absolutePath(workspaceRoot, candidate.path)
+                    return candidate.type === 'directory' ? `${full}/` : full
+                  })
                   .join('\n'))
               }}
               onContextMenu={(event) => {
