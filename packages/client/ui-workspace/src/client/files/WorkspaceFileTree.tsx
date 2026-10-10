@@ -521,6 +521,7 @@ export function WorkspaceFileTree({
               key={row.path}
               className={clsx(css.row, selection.has(row.path) && css.multiSelected, selected === row.path && css.selected)}
               role="treeitem"
+              data-files-path={row.path}
               aria-level={row.depth + 1}
               aria-selected={selection.has(row.path)}
               aria-expanded={directory ? open : undefined}
@@ -559,12 +560,16 @@ export function WorkspaceFileTree({
                 setSelected(row.path)
                 setSelection((current) => {
                   if (shift && anchor.current !== null) {
-                    const ordered = rowsRef.current
-                    const from = ordered.findIndex(candidate => candidate.path === anchor.current)
-                    const to = ordered.findIndex(candidate => candidate.path === row.path)
+                    // The run is measured over the rows AS RENDERED, read from the DOM: the list a
+                    // closure holds can be a render behind, and a range measured against a list
+                    // that no longer matches what the reader sees is a range that finds nothing.
+                    const rendered = [...document.querySelectorAll('[role=treeitem][data-files-path]')]
+                      .map(node => node.getAttribute('data-files-path') ?? '')
+                    const from = rendered.indexOf(anchor.current)
+                    const to = rendered.indexOf(row.path)
                     if (from === -1 || to === -1) return new Set([row.path])
                     const [start, end] = from <= to ? [from, to] : [to, from]
-                    return new Set(ordered.slice(start, end + 1).map(candidate => candidate.path))
+                    return new Set(rendered.slice(start, end + 1))
                   }
                   if (toggleOne) {
                     const next = new Set(current)

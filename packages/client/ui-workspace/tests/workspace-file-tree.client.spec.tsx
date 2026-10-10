@@ -73,6 +73,9 @@ describe('WorkspaceFileTree', () => {
 
     // `aria-selected` reports the selection itself, with no drag involved: this separates "the
     // range was never taken" from "the drag read a stale selection".
+    // The rows carry the right paths, in the right order (measured: ['a.py','b.py','c.py']), and
+    // the row DOES receive shiftKey true (measured with a listener), yet the selection ends up
+    // holding one row. Two readings that should agree do not, so the deviation is still unseen.
     const selectedNames = ['a.py', 'b.py', 'c.py']
       .map(name => screen.getByText(name).closest('[role=treeitem]'))
       .map(node => node?.getAttribute('aria-selected'))
