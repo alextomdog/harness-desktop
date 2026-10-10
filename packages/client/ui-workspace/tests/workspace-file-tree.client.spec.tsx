@@ -45,6 +45,7 @@ function mount(overrides: Partial<WorkspaceFileTreeProps> = {}) {
 }
 
 describe('WorkspaceFileTree', () => {
+
   // KNOWN BUG, reproduced here: a Shift-click does not extend the selection. `aria-selected`
   // reports ['false','false','true'] where a range would be ['true','true','true'], so the range
   // branch never runs. Skipped only until it does; this is the reproduction.
