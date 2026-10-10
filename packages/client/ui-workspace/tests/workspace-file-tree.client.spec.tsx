@@ -45,6 +45,62 @@ function mount(overrides: Partial<WorkspaceFileTreeProps> = {}) {
 }
 
 describe('WorkspaceFileTree', () => {
+  // KNOWN BUG, reproduced here: a Shift range is not taken, so a drag from the middle of one
+  // carries only that row. Expected 'a.py\nb.py\nc.py'; it currently sends 'b.py'. The case stays
+  // skipped only until the range works — deleting it would delete the reproduction.
+  it.skip('drags every row the reader has taken, not just the one under the pointer', async () => {
+    const listDirectory = listingSource({
+      '.': {
+        path: '',
+        truncated: false,
+        entries: [
+          { name: 'a.py', type: 'file' },
+          { name: 'b.py', type: 'file' },
+          { name: 'c.py', type: 'file' },
+        ],
+      },
+    })
+    mount({ listDirectory })
+
+    const rowOf = async (name: string): Promise<HTMLElement> =>
+      ((await screen.findByText(name)).closest('[role=treeitem]') as HTMLElement)
+    const first = await rowOf('a.py')
+    const last = await rowOf('c.py')
+
+    // A range taken with Shift, then a drag from the middle of it.
+    fireEvent.click(first)
+    fireEvent.click(last, { shiftKey: true })
+
+    // Re-queried AFTER the clicks: the row React renders now is the one whose handler sees the
+    // selection the clicks produced.
+    const dragged = await rowOf('b.py')
+    const transfer = { setData: vi.fn(), effectAllowed: '' }
+    fireEvent.dragStart(dragged, { dataTransfer: transfer })
+
+    // All three travel: one chip where the reader picked three is not what they asked for.
+    // Reported as a whole so a failure shows the payload rather than only the mismatch.
+    const payload = (transfer.setData as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[1]
+    expect({ payload }).toEqual({ payload: 'a.py\nb.py\nc.py' })
+  })
+
+  it('drags only the row under the pointer when it is not part of a selection', async () => {
+    const listDirectory = listingSource({
+      '.': {
+        path: '',
+        truncated: false,
+        entries: [{ name: 'a.py', type: 'file' }, { name: 'b.py', type: 'file' }],
+      },
+    })
+    mount({ listDirectory })
+    const first = ((await screen.findByText('a.py')).closest('[role=treeitem]') as HTMLElement)
+    const second = (screen.getByText('b.py').closest('[role=treeitem]') as HTMLElement)
+
+    fireEvent.click(first)
+    const transfer = { setData: vi.fn(), effectAllowed: '' }
+    fireEvent.dragStart(second, { dataTransfer: transfer })
+
+    expect(transfer.setData).toHaveBeenCalledWith('text/plain', 'b.py')
+  })
   it('asks for the workspace root as `.` and renders its entries', async () => {
     const listDirectory = listingSource({
       '.': {

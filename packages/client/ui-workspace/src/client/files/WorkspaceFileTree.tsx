@@ -212,6 +212,14 @@ export function WorkspaceFileTree({
    */
   const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set())
   const anchor = useRef<string | null>(null)
+  /**
+   * The visible rows, mirrored for the handlers.
+   *
+   * A row's click reads this to measure a Shift range, and a range measured against a stale list
+   * is a range that silently fails to include anything: the anchor is not found and the reader
+   * gets a selection of one after asking for a run.
+   */
+  const rowsRef = useRef<readonly Row[]>([])
   /** The two dismissible surfaces, so an outside-press check can exempt them. */
   const menuRef = useRef<HTMLDivElement | null>(null)
   const promptRef = useRef<HTMLDivElement | null>(null)
@@ -280,6 +288,7 @@ export function WorkspaceFileTree({
     const everything = new Set(directories.keys())
     return flatten(directories, everything).filter(row => row.name.toLowerCase().includes(matches))
   }, [allRows, matches, directories])
+  rowsRef.current = rows
   /** Folding this section empties its rows, the same way folding a group does. */
   const shown = open ? rows : []
   /** The row the inline name editor replaces, when one is open in place. */
@@ -522,7 +531,15 @@ export function WorkspaceFileTree({
               draggable
               onDragStart={(event) => {
                 event.dataTransfer.effectAllowed = 'copy'
-                event.dataTransfer.setData('text/plain', directory ? `${row.path}/` : row.path)
+                // Everything the reader has taken travels together. A drag out of a selection says
+                // "these", and a lane carrying only the row under the pointer would silently drop
+                // the rest of what they chose — one chip where they picked seven.
+                const taken = selection.has(row.path)
+                  ? rows.filter(candidate => selection.has(candidate.path))
+                  : [row]
+                event.dataTransfer.setData('text/plain', taken
+                  .map(candidate => candidate.type === 'directory' ? `${candidate.path}/` : candidate.path)
+                  .join('\n'))
               }}
               onContextMenu={(event) => {
                 event.preventDefault()
@@ -536,11 +553,12 @@ export function WorkspaceFileTree({
                 setSelected(row.path)
                 setSelection((current) => {
                   if (event.shiftKey && anchor.current !== null) {
-                    const from = rows.findIndex(candidate => candidate.path === anchor.current)
-                    const to = rows.findIndex(candidate => candidate.path === row.path)
+                    const ordered = rowsRef.current
+                    const from = ordered.findIndex(candidate => candidate.path === anchor.current)
+                    const to = ordered.findIndex(candidate => candidate.path === row.path)
                     if (from === -1 || to === -1) return new Set([row.path])
                     const [start, end] = from <= to ? [from, to] : [to, from]
-                    return new Set(rows.slice(start, end + 1).map(candidate => candidate.path))
+                    return new Set(ordered.slice(start, end + 1).map(candidate => candidate.path))
                   }
                   if (event.ctrlKey || event.metaKey) {
                     const next = new Set(current)
