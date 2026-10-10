@@ -9,13 +9,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { bootThemeInjections } from './boot-theme.ts'
 import {
-  DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE, FONT_SIZE_MIN, FONT_SIZE_MAX, THEME_PREFERENCES,
+  DEFAULT_EDITOR_FONT_FAMILY, DEFAULT_EDITOR_FONT_SIZE, DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE,
+  EDITOR_FONT_FAMILIES, EDITOR_FONT_SIZE_MAX, EDITOR_FONT_SIZE_MIN, FONT_SIZE_MIN, FONT_SIZE_MAX,
+  THEME_PREFERENCES,
 } from './theme-settings.ts'
 
 export {
   DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE, FONT_SIZE_FIELD, FONT_SIZE_MAX, FONT_SIZE_MIN,
   THEME_PREFERENCE_FIELD, THEME_PREFERENCES, THEME_SETTINGS_NAMESPACE,
-  type ThemePreference, type ThemeSettings,
+  type EditorFontFamily, type ThemePreference, type ThemeSettings,
 } from './theme-settings.ts'
 
 /** Runtime preferences projected to the browser. */
@@ -24,12 +26,18 @@ export interface Config {
   preference: Volatile<ThemePreference>
   /** Browser font size in pixels. */
   fontSize: Volatile<number>
+  /** Document editor face. */
+  editorFontFamily: Volatile<EditorFontFamily>
+  /** Document editor size in pixels. */
+  editorFontSize: Volatile<number>
 }
 
 /** Live theme and typography preferences. */
 export const Config = z.object({
   preference: z.union([...THEME_PREFERENCES]).default(DEFAULT_PREFERENCE).volatile(),
   fontSize: z.number().step(1).min(FONT_SIZE_MIN).max(FONT_SIZE_MAX).default(DEFAULT_FONT_SIZE).volatile(),
+  editorFontFamily: z.union([...EDITOR_FONT_FAMILIES]).default(DEFAULT_EDITOR_FONT_FAMILY).volatile(),
+  editorFontSize: z.number().step(1).min(EDITOR_FONT_SIZE_MIN).max(EDITOR_FONT_SIZE_MAX).default(DEFAULT_EDITOR_FONT_SIZE).volatile(),
 })
 
 /** Supply the current palette before browser plugins start.
