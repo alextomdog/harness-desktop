@@ -52,6 +52,30 @@ function lines(container: HTMLElement): HTMLElement[] {
 }
 
 describe('line numbering', () => {
+  it('keeps the reading position when the text arrives again', async () => {
+    const props = {
+      version: 'v1',
+      save: () => new Promise<never>(() => undefined),
+      reload: () => undefined,
+      onDirty: () => undefined,
+      labels: LABELS,
+    }
+    const view = render(<EditableTextBody {...props} text={'line\n'.repeat(400)} />)
+    const before = view.container.querySelector<HTMLTextAreaElement>('[data-textpreview-textarea]')
+    expect(before).not.toBeNull()
+    // jsdom has no layout, so the offset is set rather than scrolled to — which is exactly the
+    // value the editor has to carry across the update.
+    if (before !== null) before.scrollTop = 120
+
+    // The Host's text arrives again, as it does after a save.
+    view.rerender(<EditableTextBody {...props} version="v2" text={'line\n'.repeat(400) + 'tail'} />)
+    await new Promise((resolve) => { requestAnimationFrame(() => { resolve(undefined) }) })
+
+    const after = view.container.querySelector<HTMLTextAreaElement>('[data-textpreview-textarea]')
+    // Assigning a controlled textarea's value resets its scroll; being thrown back to the first
+    // line after every Ctrl+S is the bug this holds shut.
+    expect(after?.scrollTop).toBe(120)
+  })
   it('indents with four spaces when Tab is pressed', () => {
     const container = editor('alpha\nbeta')
     const area = container.querySelector<HTMLTextAreaElement>('[data-textpreview-textarea]')

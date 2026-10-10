@@ -126,9 +126,22 @@ export function EditableTextBody({
     const untouched = bufferRef.current === savedText
     basisRef.current = version
     if (untouched) {
+      // Assigning a controlled textarea's value resets its scroll to the top. A reader who pressed
+      // Ctrl+S — or whose file changed elsewhere — is somewhere in the middle of a document, and
+      // being thrown back to its first line costs them their place every single time. The offset is
+      // carried across the update, and the painted layer is synced with it because a programmatic
+      // assignment does not raise the scroll event that normally keeps the two together.
+      const area = areaRef.current
+      const keep = area === null ? 0 : area.scrollTop
       setBuffer(text)
       setSavedText(text)
       setState(current => (current === 'stale' ? 'clean' : current))
+      if (area !== null) {
+        requestAnimationFrame(() => {
+          area.scrollTop = keep
+          syncLayers()
+        })
+      }
       return
     }
     setState('stale')
