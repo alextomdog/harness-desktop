@@ -14,6 +14,7 @@ function createProductApi(): DshDesktopProductApi {
   return {
     protocolVersion: 1,
     browser: createDesktopBrowserBridge(),
+    readClipboardFiles: () => ipcRenderer.invoke(DESKTOP_IPC.readClipboardFiles) as Promise<readonly string[]>,
     quotes: {
       subscribe(listener) {
         const handle = (): void => { listener() }

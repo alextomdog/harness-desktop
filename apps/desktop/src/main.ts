@@ -30,6 +30,7 @@ import { installDesktopDirectoryPicker } from './directory-picker.ts'
 import { installMicrophonePermissions } from './microphone-permissions.ts'
 import { DesktopBackendController } from './backend-controller.ts'
 import { DESKTOP_IPC, SCHEME, assertDesktopSender, type DesktopUpdateState } from './ipc.ts'
+import { readClipboardFilePaths } from './clipboard-files.ts'
 import { readDeviceInfo } from './device-info.ts'
 import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
@@ -705,6 +706,12 @@ async function main(): Promise<void> {
     return browserGuests.acquire(event.sender, workspace)
   })
   ipcMain.handle(DESKTOP_IPC.browserRelease, (event, lease: unknown) => {
+  // The file list a reader copied in their file manager. Only the main process can read it,
+  // and the tree that receives it only ever needs the paths.
+    ipcMain.handle(DESKTOP_IPC.readClipboardFiles, (event) => {
+      assertMainApplication(event)
+      return readClipboardFilePaths()
+    })
     assertProductSender(event)
     return browserGuests.release(event.sender, lease)
   })

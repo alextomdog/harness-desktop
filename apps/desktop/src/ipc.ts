@@ -9,6 +9,7 @@ export const DESKTOP_IPC = {
   shortcutsInput: 'dsh-desktop:shortcuts-input',
   /** A passage the reader quoted out of a page in the built-in browser. */
   quoteSelection: 'dsh-desktop:quote-selection',
+  readClipboardFiles: 'dsh-desktop:read-clipboard-files',
   shortcutsCloseWindow: 'dsh-desktop:shortcuts-close-window',
   shortcutsGet: 'dsh-desktop:shortcuts-get',
   shortcutsEdit: 'dsh-desktop:shortcuts-edit',
@@ -81,6 +82,8 @@ export interface DshDesktopProductApi {
    * the webview element that can read it.
    */
   readonly quotes: { subscribe(listener: () => void): () => void }
+  /** Absolute paths of the files the system clipboard holds, in order. */
+  readClipboardFiles(): Promise<readonly string[]>
   readonly browser: DesktopBrowserBridge
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi
