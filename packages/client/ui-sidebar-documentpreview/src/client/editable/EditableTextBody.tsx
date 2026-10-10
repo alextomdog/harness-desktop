@@ -29,6 +29,8 @@ import {
 } from 'react'
 import { FindBar } from './FindBar.tsx'
 import type { FindBarLabels } from './FindBar.tsx'
+import { findDefinition, wordAt } from './definition.ts'
+import { offsetAtPoint } from './pointer-word.ts'
 import { useFind } from './useFind.ts'
 import { useCodeHighlighter } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HighlightSpan } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -365,6 +367,26 @@ export function EditableTextBody({
           </pre>
           <textarea
             ref={areaRef}
+            onClick={(event) => {
+              // The caret moved, whichever way this click ends up going.
+              syncCaret()
+              // Ctrl+click is go-to-definition, as it is in the editor this one is measured against.
+              // It jumps only when this file really defines the name: a jump that lands nowhere tells
+              // the reader the truth, while one that lands somewhere approximate does not.
+              if (!event.ctrlKey && !event.metaKey) return
+              const area = areaRef.current
+              const offset = offsetAtPoint(
+                { cover: area, painted: paintRef.current }, event.clientX, event.clientY)
+              const word = offset === undefined ? undefined : wordAt(buffer, offset)
+              const hit = word === undefined ? undefined : findDefinition(buffer, word)
+              if (area === null || hit === undefined) return
+              event.preventDefault()
+              area.focus()
+              area.setSelectionRange(hit.offset, hit.offset + hit.name.length)
+              // A programmatic selection raises no scroll event, so the painted layer is told, or the
+              // line numbers would slide away from their lines.
+              syncLayers()
+            }}
             className={css.area}
             value={buffer}
             spellCheck={false}
@@ -376,7 +398,6 @@ export function EditableTextBody({
             // the mark follows every path the browser reports, not only typing.
             onSelect={syncCaret}
             onKeyUp={syncCaret}
-            onClick={syncCaret}
             onFocus={syncCaret}
             onChange={(event) => {
               const next = event.target.value
