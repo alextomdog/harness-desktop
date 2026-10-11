@@ -133,6 +133,15 @@ export class BrowserController implements HostObservable<BrowserControllerState>
   }
 
   /**
+   * Apply the optional page-zoom control; providers that cannot zoom remain unchanged.
+   * @param factor - page zoom, 1 being the page's own size.
+   */
+  setZoom(factor: number): void {
+    const zoom = this.page.frame.zoom
+    if (zoom !== undefined) this.command(() => { zoom.setZoom(factor) })
+  }
+
+  /**
    * Redirect future checkpoint writes to a replacement Session binding.
    * @param actions - replacement persistence writer.
    */
@@ -201,6 +210,8 @@ export interface BrowserInjected {
   reload(tabId: BrowserSurfaceId): void
   /** @param tabId - owning tab. @param enabled - provider's optional sandbox control. */
   setSandbox(tabId: BrowserSurfaceId, enabled: boolean): void
+  /** @param tabId - owning tab. @param factor - page zoom, 1 being the page's own size. */
+  setZoom(tabId: BrowserSurfaceId, factor: number): void
 }
 
 /**
@@ -262,5 +273,6 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
     goForward: (id) => { controller(id)?.goForward() },
     reload: (id) => { controller(id)?.reload() },
     setSandbox: (id, enabled) => { controller(id)?.setSandbox(enabled) },
+    setZoom: (id, factor) => { controller(id)?.setZoom(factor) },
   }
 }

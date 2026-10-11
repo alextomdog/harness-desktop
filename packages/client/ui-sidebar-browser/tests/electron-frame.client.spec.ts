@@ -118,3 +118,36 @@ it('steps from the zoom the page reports rather than the last value written here
   // 2 / 1.1, not 1 / 1.1: the step is taken from what the page reports.
   expect(setZoomFactor.mock.calls.at(-1)?.[0] as number).toBeCloseTo(1.82, 1)
 })
+
+it('publishes the page zoom and keeps it inside the range a browser keeps', async () => {
+  const element: WebviewElement = Object.assign(document.createElement('div'), {
+    loadURL: vi.fn(async () => {}), getURL: () => 'about:blank', getTitle: () => 'Zoom',
+    canGoBack: () => false, canGoForward: () => false, clearHistory: vi.fn(),
+    goBack: vi.fn(), goForward: vi.fn(), reload: vi.fn(), isLoading: () => false,
+    setZoomFactor: vi.fn(async () => {}), getZoomFactor: () => 1, executeJavaScript: vi.fn(async () => undefined),
+  })
+  const bridge: DesktopBrowserBridge = {
+    acquire: vi.fn(async () => ({ lease: 'lease' as DesktopBrowserLeaseId, partition: 'partition' })),
+    release: vi.fn(async () => {}), onOpenRequested: () => () => {}, onNewPage: () => () => {},
+  }
+  const presentation = new ElectronWebviewPresentation({ mounted: () =>{  frame.attach() }, unmounted: () =>{  frame.detach() } })
+  const frame = new ElectronWebViewImpl({ initial: undefined, persist: vi.fn(), openRequested: vi.fn() },
+    bridge, async () => 'cwd:/workspace', presentation)
+  vi.spyOn(presentation, 'createElement').mockReturnValue(element)
+  const host = document.createElement('div')
+  host.id = 'electron-frame-zoom-state'
+  document.body.append(host)
+  presentation.mount(host.id)
+  frame.loadUrl({ kind: 'https', url: 'https://example.test/', title: 'Example' })
+  await vi.waitFor(() => { expect(host.firstElementChild).toBe(element) })
+  element.dispatchEvent(new Event('dom-ready'))
+  expect(frame.getSnapshot().zoom).toBe(1)
+  element.dispatchEvent(Object.assign(new Event('console-message'), { message: 'dsh-sidebar-browser-zoom:1' }))
+  await vi.waitFor(() => { expect(frame.getSnapshot().zoom).toBeGreaterThan(1) })
+  // The chrome reads this number, so it must be the clamped value the page actually carries.
+  frame.zoom?.setZoom(99)
+  expect(frame.getSnapshot().zoom).toBe(5)
+  frame.zoom?.setZoom(0.01)
+  expect(frame.getSnapshot().zoom).toBe(0.25)
+  expect(element.setZoomFactor).toHaveBeenLastCalledWith(0.25)
+})

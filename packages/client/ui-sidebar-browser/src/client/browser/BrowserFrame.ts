@@ -18,6 +18,14 @@ export interface BrowserFrameState {
   readonly error: BrowserLoadError | undefined
   /** Undefined when this provider does not expose a sandbox control. */
   readonly sandboxEnabled: boolean | undefined
+  /** Page zoom, 1 being the page's own size; undefined when this provider cannot zoom. */
+  readonly zoom: number | undefined
+}
+
+/** Optional page-zoom control, for a provider that renders a real page. */
+export interface BrowserZoomControl {
+  /** @param factor - page zoom, 1 being the page's own size. */
+  setZoom(factor: number): void
 }
 
 /** Optional iframe policy control, not an Electron process-sandbox switch. */
@@ -29,6 +37,7 @@ export interface BrowserSandboxControl {
 /** Navigation owns page lifetime; mounting and hiding belong to BrowserPresentation. */
 export interface BrowserFrame extends HostObservable<BrowserFrameState> {
   readonly sandbox?: BrowserSandboxControl
+  readonly zoom?: BrowserZoomControl
   /** @param target - validated HTTP(S) address; loading failures are published in state. */
   loadUrl(target: BrowserTarget): void
   /** Move backward when the provider reports an available entry. */
@@ -47,5 +56,5 @@ export interface BrowserFrame extends HostObservable<BrowserFrameState> {
  */
 export function emptyBrowserFrame(): BrowserFrameState {
   return { target: undefined, address: 'empty', loading: false, canGoBack: false, canGoForward: false,
-    error: undefined, sandboxEnabled: undefined }
+    error: undefined, sandboxEnabled: undefined, zoom: undefined }
 }

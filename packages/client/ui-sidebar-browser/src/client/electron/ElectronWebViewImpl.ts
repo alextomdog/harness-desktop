@@ -2,7 +2,7 @@
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { DesktopBrowserBridge, DesktopBrowserLeaseId } from '../../types.ts'
 import type { ElectronWebviewPresentation, WebviewElement } from './ElectronWebviewPresentation.ts'
-import { emptyBrowserFrame, type BrowserFrame, type BrowserFrameState, type BrowserLoadError } from '../browser/BrowserFrame.ts'
+import { emptyBrowserFrame, type BrowserFrame, type BrowserFrameState, type BrowserLoadError, type BrowserZoomControl } from '../browser/BrowserFrame.ts'
 import type { BrowserPageOptions } from '../browser/BrowserPage.ts'
 import { browserAddressCheckpoint, currentBrowserTarget } from '../browser/BrowserPersistence.ts'
 import { parseBrowserAddress, type BrowserTarget } from '../browser/url.ts'
@@ -47,7 +47,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
   private workspaceKey: string | undefined
   private initializing: Promise<void> | undefined
   private ready = false
-  private zoom = 1
+  private factor = 1
   private pending: BrowserTarget | undefined
   private revision = 0
   private firstDocument = true
@@ -66,7 +66,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
     private readonly workspace: (signal: AbortSignal) => Promise<string>,
     private readonly presentation: ElectronWebviewPresentation) {
     this.checkpoint = currentBrowserTarget(options.initial)
-    this.store = createSnapshotStore(emptyBrowserFrame())
+    this.store = createSnapshotStore({ ...emptyBrowserFrame(), zoom: 1 })
   }
 
   /** @returns immutable carrier-neutral navigation state. */
@@ -163,17 +163,31 @@ export class ElectronWebViewImpl implements BrowserFrame {
     // Read what the page is actually at, rather than trusting the last value written here: the guest
     // may already carry a zoom this frame never set (a restored page, another surface's earlier
     // step), and stepping from a stale number lands somewhere the reader did not ask for.
-    let current = this.zoom
+    let current = this.factor
     try {
       const reported = element.getZoomFactor()
       if (typeof reported === 'number' && Number.isFinite(reported) && reported > 0) current = reported
     } catch {
       // A tag that is not ready to answer keeps the last known value.
     }
-    const scaled = step > 0 ? current * 1.1 : current / 1.1
-    this.zoom = Math.min(5, Math.max(0.25, Math.round(scaled * 100) / 100))
-    void element.setZoomFactor(this.zoom).catch(() => undefined)
+    this.applyZoom(step > 0 ? current * 1.1 : current / 1.1)
   }
+
+  /**
+   * Set the page's zoom, publish it for the chrome, and keep it inside the range a browser keeps.
+   * @param factor - requested zoom, 1 being the page's own size.
+   */
+  private applyZoom(factor: number): void {
+    const element = this.element
+    this.factor = Math.min(5, Math.max(0.25, Math.round(factor * 100) / 100))
+    this.store.set({ ...this.store.getSnapshot(), zoom: this.factor })
+    if (element !== undefined) void element.setZoomFactor(this.factor).catch(() => undefined)
+  }
+  /** Page zoom as the chrome sees it; the guest reports it through its own tag. */
+  readonly zoom: BrowserZoomControl = {
+    setZoom: (factor: number) => { this.applyZoom(factor) },
+  }
+
   private initialize(): void {
     const attachment = this.attachment
     if (attachment === undefined || this.initializing !== undefined || this.element !== undefined || this.lifetime.signal.aborted) return
@@ -209,7 +223,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
       // Ctrl+wheel zoom, the way a browser does it. The gesture happens inside the guest and never
       // reaches this document, so the guest watches for it and reports the step back.
       void element.executeJavaScript(ZOOM_SCRIPT).catch(() => undefined)
-      if (this.zoom !== 1) void element.setZoomFactor(this.zoom).catch(() => undefined)
+      if (this.factor !== 1) this.applyZoom(this.factor)
     }, { signal })
     element.addEventListener('console-message', (event) => {
       const message = (event as ConsoleMessageEvent).message

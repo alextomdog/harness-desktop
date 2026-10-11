@@ -72,7 +72,7 @@ function useBrowserDraft(url: string | undefined, revision: number): readonly [s
 
 /** Render provider-neutral navigation state and optional controls over one surface. */
 export function BrowserSurfaceBody(props: BrowserSurfaceBodyProps): ReactNode {
-  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, useBrowserState, useStore, t, surface } = props
+  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, setZoom, useBrowserState, useStore, t, surface } = props
   useEffect(() => surface.bindRefresh(() => { reload(surface.id) }), [surface, reload])
   const saved = useStore(state => state.byTab[surface.id])
   const initial = useRef(saved)
@@ -98,6 +98,17 @@ export function BrowserSurfaceBody(props: BrowserSurfaceBodyProps): ReactNode {
   const unknown = frame.address === 'unknown'
   const externalUrl = unknown ? undefined : target?.url
   const sandboxed = frame.sandboxEnabled
+  const zoom = frame.zoom
+  // Like a browser: the percentage announces itself when it changes, and a page that is not at 100%
+  // keeps a way back — so the reset stays reachable for as long as the zoom is off its default.
+  const [zoomAnnounced, setZoomAnnounced] = useState(false)
+  useEffect(() => {
+    if (zoom === undefined) return
+    setZoomAnnounced(true)
+    const timer = setTimeout(() => { setZoomAnnounced(false) }, 1600)
+    return () => { clearTimeout(timer) }
+  }, [zoom])
+  const zoomBubble = zoom !== undefined && zoom !== 1
   const failure = state?.addressFailure
   const error = frame.error
   const submit = (event: FormEvent): void => { event.preventDefault(); loadUrl(surface.id, draft) }
@@ -141,6 +152,12 @@ export function BrowserSurfaceBody(props: BrowserSurfaceBodyProps): ReactNode {
       {failure !== undefined && <div className={css.failure} role="alert">{t(`error.${failure}`)}</div>}
       <div className={css.content} aria-busy={frame.loading}>
         <div id={viewportId} className={css.viewport} aria-label={t('type.label')} />
+        {zoom !== undefined && (zoomBubble || zoomAnnounced) && <div className={css.zoom} role="status" aria-live="polite">
+          <span className={css.zoomValue}>{Math.round(zoom * 100)}%</span>
+          {zoomBubble && <button type="button" className={css.zoomReset} onClick={() => { setZoom(surface.id, 1) }}>
+            {t('zoom.reset')}
+          </button>}
+        </div>}
         {restoreTarget !== undefined && <section className={css.restore} aria-label={t('restore.previous')}>
           <p className={css.restoreLabel}>{t('restore.previous')}</p>
           <p className={css.restoreTitle}>{restoreTarget.title}</p>
