@@ -35,7 +35,7 @@ export type WebViewProps = ConvViewProps
  * @returns the browser body over this view's surface.
  */
 export function WebView(props: WebViewProps): ReactNode {
-  const { reload } = props
+  const { loadUrl } = props
   // Stopping is the view's own business: a view that unmounts must not leave a page loaded behind
   // it, and a dock tab's signal is not this view's to end.
   const alive = useRef(new AbortController())
@@ -50,8 +50,10 @@ export function WebView(props: WebViewProps): ReactNode {
     refreshShortcut: undefined,
     // No dock command reaches a view, so there is nothing to bind a refresh to.
     bindRefresh: () => undefined,
-    // A view cannot open a dock tab beside itself, so it offers no such action.
-    openTab: () => undefined,
-  }), [reload])
+    // A page that asks for a new tab is asking to go there. The view has nowhere else to show it,
+    // and the alternative — a window that opens blank, or nothing happening at all — is worse than
+    // following the reader: so the link replaces this view's own page, in place.
+    openTab: (url: string) => { loadUrl(SURFACE_ID, url) },
+  }), [loadUrl])
   return <BrowserSurfaceBody {...props} surface={surface} />
 }
