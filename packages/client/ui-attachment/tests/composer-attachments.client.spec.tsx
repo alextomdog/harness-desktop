@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import type {
   ComposerAttachment, ComposerAttachmentsOwnerProps, ComposerAttachmentsProps,
@@ -87,42 +88,50 @@ function props(overrides: Partial<ComposerAttachmentsOwnerProps> = {}): Composer
   } as unknown as ComposerAttachmentsProps
 }
 
+/**
+ * A composer seat as the conversation renders it. The drop hint belongs to this box, so the tests that
+ * exercise it say where the pointer is rather than treating the whole document as the target.
+ */
+function composerHost(ui: ReactNode): { view: ReturnType<typeof render>; host: HTMLElement } {
+  const view = render(<div data-conversation-region="composer">{ui}</div>)
+  return { view, host: view.container.firstElementChild as HTMLElement }
+}
 describe('ComposerAttachments', () => {
   it('accepts file drops anywhere on the document and keeps non-file drags native', () => {
     const onAddFiles = vi.fn()
-    const view = render(<ComposerAttachments {...props({
+    const { view, host } = composerHost(<ComposerAttachments {...props({
       onAddFiles,
       dropLimits: { count: 20, size: '5MB' },
     })} />)
 
-    expect(fireEvent.dragEnter(document.body, { dataTransfer: null })).toBe(true)
+    expect(fireEvent.dragEnter(host, { dataTransfer: null })).toBe(true)
     const textTransfer = { types: ['text/plain'], files: [], dropEffect: 'none' }
-    expect(fireEvent.dragEnter(document.body, { dataTransfer: textTransfer })).toBe(true)
-    expect(fireEvent.dragOver(document.body, { dataTransfer: textTransfer })).toBe(true)
-    expect(fireEvent.drop(document.body, { dataTransfer: textTransfer })).toBe(true)
+    expect(fireEvent.dragEnter(host, { dataTransfer: textTransfer })).toBe(true)
+    expect(fireEvent.dragOver(host, { dataTransfer: textTransfer })).toBe(true)
+    expect(fireEvent.drop(host, { dataTransfer: textTransfer })).toBe(true)
     expect(view.queryByRole('status')).toBeNull()
 
     const image = attachment('dropped').file
     const dataTransfer = { types: ['Files'], files: [image], items: [], dropEffect: 'none' }
-    expect(fireEvent.dragEnter(document.body, { dataTransfer })).toBe(false)
+    expect(fireEvent.dragEnter(host, { dataTransfer })).toBe(false)
     expect(view.getByRole('status').textContent).toContain('文件或图片拖动到此处即可添加')
     expect(view.getByRole('status').textContent).toContain('图片限制：最多 20 张，每张 5MB')
-    expect(fireEvent.dragOver(document.body, { dataTransfer })).toBe(false)
+    expect(fireEvent.dragOver(host, { dataTransfer })).toBe(false)
     expect(dataTransfer.dropEffect).toBe('copy')
-    expect(fireEvent.drop(document.body, { dataTransfer })).toBe(false)
+    expect(fireEvent.drop(host, { dataTransfer })).toBe(false)
     expect(onAddFiles).toHaveBeenCalledWith([image], new Set())
     expect(view.queryByRole('status')).toBeNull()
   })
 
   it('reports dropped directories from the entry API beside the dropped files', () => {
     const onAddFiles = vi.fn()
-    render(<ComposerAttachments {...props({ onAddFiles })} />)
+    const { host } = composerHost(<ComposerAttachments {...props({ onAddFiles })} />)
     const folder = new File([], 'project')
     const note = new File([Uint8Array.of(1)], 'notes.md', { type: 'text/markdown' })
     const entry = (isDirectory: boolean | null, file: File) => ({
       kind: 'file', getAsFile: () => new File([], file.name), webkitGetAsEntry: () => (isDirectory === null ? null : { isDirectory }),
     })
-    fireEvent.drop(document.body, {
+    fireEvent.drop(host, {
       dataTransfer: {
         types: ['Files'],
         files: [folder, note],
@@ -132,7 +141,7 @@ describe('ComposerAttachments', () => {
     })
     expect(onAddFiles).toHaveBeenCalledWith([folder, note], new Set([folder]))
     // An entry API that answers nothing, or a browser without it, reports no directories.
-    fireEvent.drop(document.body, {
+    fireEvent.drop(host, {
       dataTransfer: {
         types: ['Files'],
         files: [note],
@@ -144,16 +153,16 @@ describe('ComposerAttachments', () => {
   })
 
   it('tracks nested file drags and clears an aborted drag', () => {
-    const view = render(<ComposerAttachments {...props()} />)
+    const { view, host } = composerHost(<ComposerAttachments {...props()} />)
     const dataTransfer = { types: ['Files'], files: [], items: [], dropEffect: 'none' }
-    fireEvent.dragLeave(document.body, {
+    fireEvent.dragLeave(host, {
       dataTransfer: { types: ['text/plain'], files: [], dropEffect: 'none' },
     })
-    fireEvent.dragEnter(document.body, { dataTransfer })
-    fireEvent.dragEnter(document.body, { dataTransfer })
-    fireEvent.dragLeave(document.body, { dataTransfer, clientX: 5, clientY: 5 })
+    fireEvent.dragEnter(host, { dataTransfer })
+    fireEvent.dragEnter(host, { dataTransfer })
+    fireEvent.dragLeave(host, { dataTransfer, clientX: 5, clientY: 5 })
     expect(view.getByRole('status')).toBeTruthy()
-    fireEvent.dragLeave(document.body, { dataTransfer, clientX: 5, clientY: 5 })
+    fireEvent.dragLeave(host, { dataTransfer, clientX: 5, clientY: 5 })
     expect(view.queryByRole('status')).toBeNull()
     fireEvent.dragEnter(document.documentElement, { dataTransfer })
     const leftViewport = new Event('dragleave', { bubbles: true, cancelable: true })
@@ -164,21 +173,21 @@ describe('ComposerAttachments', () => {
     })
     fireEvent(document.documentElement, leftViewport)
     expect(view.queryByRole('status')).toBeNull()
-    fireEvent.dragEnter(document.body, { dataTransfer })
+    fireEvent.dragEnter(host, { dataTransfer })
     fireEvent.dragEnd(window, { dataTransfer })
     expect(view.queryByRole('status')).toBeNull()
   })
 
   it('shows a blocked drop without forwarding its files', () => {
     const onAddFiles = vi.fn()
-    const view = render(<ComposerAttachments {...props({ canAcceptDrop: false, onAddFiles })} />)
+    const { view, host } = composerHost(<ComposerAttachments {...props({ canAcceptDrop: false, onAddFiles })} />)
     const image = attachment('blocked').file
     const dataTransfer = { types: ['Files'], files: [image], items: [], dropEffect: 'copy' }
-    fireEvent.dragEnter(document.body, { dataTransfer })
+    fireEvent.dragEnter(host, { dataTransfer })
     expect(view.getByRole('status').textContent).toBe('当前无法添加文件或图片')
-    fireEvent.dragOver(document.body, { dataTransfer })
+    fireEvent.dragOver(host, { dataTransfer })
     expect(dataTransfer.dropEffect).toBe('none')
-    fireEvent.drop(document.body, { dataTransfer })
+    fireEvent.drop(host, { dataTransfer })
     expect(onAddFiles).not.toHaveBeenCalled()
     expect(view.queryByRole('status')).toBeNull()
   })
@@ -305,4 +314,27 @@ describe('ComposerAttachments file drafts', () => {
     })} />)
     expect(view.getByTitle('.env').textContent).toContain('ENV 3B')
   })
+})
+
+it('keeps the hint to the composer box, not to the rest of the window', () => {
+  const { view, host } = composerHost(<ComposerAttachments {...props()} />)
+  const dataTransfer = { types: ['Files'], files: [attachment('outside').file], items: [], dropEffect: 'none' }
+  // jsdom lays nothing out, so the box is given a real rectangle: a zero-sized one would call every
+  // point inside it, and the coordinate fallback has to answer 'outside' rather than 'everywhere'.
+  vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({
+    left: 100, top: 100, right: 300, bottom: 200, width: 200, height: 100, x: 100, y: 100, toJSON: () => ({}),
+  } as DOMRect)
+
+  // Dispatched by where the pointer is: jsdom carries no coordinates on a drag, so the tests drive the
+  // target the reader is over, which is the first thing the implementation consults.
+  // The transcript, the sidebar, another panel: not this composer, so nothing is promised.
+  fireEvent.dragEnter(document.body, { dataTransfer })
+  expect(view.queryByRole('status')).toBeNull()
+  fireEvent.dragOver(document.body, { dataTransfer })
+  expect(dataTransfer.dropEffect).toBe('none')
+  fireEvent.drop(document.body, { dataTransfer })
+
+  // Inside the box the reader is dropping into, the hint appears as before.
+  fireEvent.dragEnter(host, { dataTransfer })
+  expect(view.getByRole('status').textContent).toContain('文件或图片拖动到此处即可添加')
 })

@@ -1,4 +1,7 @@
 /** Document drag-and-drop listeners owned by one mounted attachment view. */
+
+/** The composer seat's own marker, as the conversation renders it. */
+const COMPOSER_REGION = '[data-conversation-region="composer"]'
 import type { ComposerAttachmentsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /**
@@ -38,19 +41,32 @@ export function installDocumentDropEvents(
     if (dataTransfer === null || !dataTransfer.types.includes('Files')) return null
     return dataTransfer
   }
+  // The hint belongs to the box the reader is dropping into, not to the window. A drag anywhere else in
+  // the app — the transcript, the sidebar, a document panel — is not a drop on this composer, and a hint
+  // there promises something this box will not take. The composer seat marks itself, so the test is the
+  // reader's actual position rather than the whole document.
+  const overComposer = (event: globalThis.DragEvent): boolean => {
+    const target = event.target
+    if (target instanceof Element && target.closest(COMPOSER_REGION) !== null) return true
+    const box = document.querySelector(COMPOSER_REGION)
+    if (box === null) return false
+    const rect = box.getBoundingClientRect()
+    return event.clientX >= rect.left && event.clientX <= rect.right
+      && event.clientY >= rect.top && event.clientY <= rect.bottom
+  }
   const reset = (): void => {
     dragDepth.current = 0
     setDragActive(false)
   }
   const onDragEnter = (event: globalThis.DragEvent): void => {
-    if (fileTransfer(event) === null) return
+    if (fileTransfer(event) === null || !overComposer(event)) return
     event.preventDefault()
     dragDepth.current += 1
     setDragActive(true)
   }
   const onDragOver = (event: globalThis.DragEvent): void => {
     const dataTransfer = fileTransfer(event)
-    if (dataTransfer === null) return
+    if (dataTransfer === null || !overComposer(event)) return
     event.preventDefault()
     dataTransfer.dropEffect = canAcceptDrop ? 'copy' : 'none'
   }
@@ -64,7 +80,7 @@ export function installDocumentDropEvents(
   }
   const onDrop = (event: globalThis.DragEvent): void => {
     const dataTransfer = fileTransfer(event)
-    if (dataTransfer === null) return
+    if (dataTransfer === null || !overComposer(event)) return
     event.preventDefault()
     reset()
     if (canAcceptDrop) {

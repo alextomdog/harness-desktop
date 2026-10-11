@@ -85,6 +85,25 @@ export function BrowserSurfaceBody(props: BrowserSurfaceBodyProps): ReactNode {
   const target = frame.target ?? restoreTarget
   const [draft, setDraft] = useBrowserDraft(target?.url ?? initialUrl.current, state?.addressRevision ?? 0)
 
+  // A drag that is over the app but NOT over this page must not light up the page's own drop hint: the
+  // reader is not dropping onto it. Claiming the drop here is what keeps the hint to the page's own
+  // rectangle — inside it the guest receives the drag itself and shows its hint as usual.
+  useLayoutEffect(() => {
+    const host = document.getElementById(viewportId)
+    if (host === null) return
+    const outside = (event: DragEvent): boolean => {
+      const rect = host.getBoundingClientRect()
+      return event.clientX < rect.left || event.clientX > rect.right
+        || event.clientY < rect.top || event.clientY > rect.bottom
+    }
+    const claim = (event: DragEvent): void => { if (outside(event)) event.preventDefault() }
+    window.addEventListener('dragenter', claim, true)
+    window.addEventListener('dragover', claim, true)
+    return () => {
+      window.removeEventListener('dragenter', claim, true)
+      window.removeEventListener('dragover', claim, true)
+    }
+  }, [viewportId])
   useLayoutEffect(() => {
     const hide = mount({
       tabId: surface.id, signal: surface.signal, viewportId, applicationOrigin: window.location.origin,
