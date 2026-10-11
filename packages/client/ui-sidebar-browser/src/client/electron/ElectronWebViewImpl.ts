@@ -12,6 +12,30 @@ interface LoadFailureEvent extends NavigationEvent {
   readonly errorCode: number
   readonly errorDescription: string
 }
+interface ConsoleMessageEvent extends Event { readonly message: string }
+
+/** Prefix the guest uses to report one Ctrl+wheel zoom step; nothing else it logs is read. */
+const ZOOM_MESSAGE = 'dsh-sidebar-browser-zoom:'
+
+/**
+ * Guest-side watcher for Ctrl+wheel zoom.
+ *
+ * A wheel over a guest never reaches the host document, so the host cannot see the gesture at all.
+ * The guest watches for it, keeps the page from scrolling on the same gesture, and reports one step
+ * back through its console — the one channel a guest has without a preload script.
+ */
+const ZOOM_SCRIPT = [
+  '(() => {',
+  '  if (window.__dshZoomInstalled === true) return',
+  '  window.__dshZoomInstalled = true',
+  '  addEventListener("wheel", (event) => {',
+  '    if (!event.ctrlKey) return',
+  '    event.preventDefault()',
+  '    event.stopPropagation()',
+  '    console.log("dsh-sidebar-browser-zoom:" + (event.deltaY < 0 ? "1" : "-1"))',
+  '  }, { capture: true, passive: false })',
+  '})()',
+].join('\n')
 
 /** Owns native history and translates Electron observations into common frame state. */
 export class ElectronWebViewImpl implements BrowserFrame {
@@ -23,6 +47,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
   private workspaceKey: string | undefined
   private initializing: Promise<void> | undefined
   private ready = false
+  private zoom = 1
   private pending: BrowserTarget | undefined
   private revision = 0
   private firstDocument = true
@@ -128,6 +153,27 @@ export class ElectronWebViewImpl implements BrowserFrame {
     catch (error) { this.commandFailed(error) }
   }
 
+  /**
+   * Change the page's zoom one step, in the 25%–500% range a browser keeps.
+   * @param step - +1 to zoom in, -1 to zoom out.
+   */
+  private zoomBy(step: number): void {
+    const element = this.element
+    if (element === undefined) return
+    // Read what the page is actually at, rather than trusting the last value written here: the guest
+    // may already carry a zoom this frame never set (a restored page, another surface's earlier
+    // step), and stepping from a stale number lands somewhere the reader did not ask for.
+    let current = this.zoom
+    try {
+      const reported = element.getZoomFactor()
+      if (typeof reported === 'number' && Number.isFinite(reported) && reported > 0) current = reported
+    } catch {
+      // A tag that is not ready to answer keeps the last known value.
+    }
+    const scaled = step > 0 ? current * 1.1 : current / 1.1
+    this.zoom = Math.min(5, Math.max(0.25, Math.round(scaled * 100) / 100))
+    void element.setZoomFactor(this.zoom).catch(() => undefined)
+  }
   private initialize(): void {
     const attachment = this.attachment
     if (attachment === undefined || this.initializing !== undefined || this.element !== undefined || this.lifetime.signal.aborted) return
@@ -160,6 +206,16 @@ export class ElectronWebViewImpl implements BrowserFrame {
       this.ready = true
       this.observe(this.store.getSnapshot().address !== 'requested')
       this.loadPending()
+      // Ctrl+wheel zoom, the way a browser does it. The gesture happens inside the guest and never
+      // reaches this document, so the guest watches for it and reports the step back.
+      void element.executeJavaScript(ZOOM_SCRIPT).catch(() => undefined)
+      if (this.zoom !== 1) void element.setZoomFactor(this.zoom).catch(() => undefined)
+    }, { signal })
+    element.addEventListener('console-message', (event) => {
+      const message = (event as ConsoleMessageEvent).message
+      if (!message.startsWith(ZOOM_MESSAGE)) return
+      const step = Number(message.slice(ZOOM_MESSAGE.length))
+      if (step === 1 || step === -1) this.zoomBy(step)
     }, { signal })
     element.addEventListener('did-navigate', () => { this.observe(true) }, { signal })
     element.addEventListener('did-navigate-in-page', (event) => {

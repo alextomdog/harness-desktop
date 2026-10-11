@@ -15,6 +15,12 @@ export interface WebviewElement extends HTMLElement {
   goForward(): void
   reload(): void
   isLoading(): boolean
+  /** @returns the page's current zoom, 1 being the page's own size. */
+  getZoomFactor(): number
+  /** @param factor - page zoom, 1 being the page's own size. */
+  setZoomFactor(factor: number): Promise<void>
+  /** @param code - script evaluated inside the guest. */
+  executeJavaScript(code: string): Promise<unknown>
 }
 
 /** Physical attachment notifications; hiding a retained Sidebar body emits neither. */
