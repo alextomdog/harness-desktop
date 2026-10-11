@@ -22,7 +22,7 @@ function NoConversationWidthControls() {
 export function ConversationContent(props: ConversationContentProps) {
   const {
     sessionId, phase, hero, useSession, useSessions, useSessionStatus,
-    useWorkspaces, useInput, useComposerBlock, renderSlot, renderSlotChain,
+    useWorkspaces, useInput, useComposerBlock, useView, renderSlot, renderSlotChain,
     selectWorkspace, t, useFactorySlot,
   } = props
   const session = useSession(snapshot => snapshot)
@@ -37,6 +37,13 @@ export function ConversationContent(props: ConversationContentProps) {
   // A plugin this package cannot import (ui-model-selection) says this session cannot
   // send; its reason is already localized by whoever raised it.
   const composerBlock = useComposerBlock(block => block)
+  // The View the Session is showing. A View that is not part of the
+  // conversation (the Browser's 「网页」) elects its own chain entry from this,
+  // so the composer belongs to whoever owns the view being looked at. This is
+  // the Session's own selection: a host that renders this content with one View
+  // pinned (the embedded subagent chat pins Chat) is not reflected here, and the
+  // only entry reading this today claims the composer for the Browser's view.
+  const view = useView(current => current)
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState<WorkspaceId | undefined>()
@@ -171,7 +178,7 @@ export function ConversationContent(props: ConversationContentProps) {
 
   const composer = renderSlotChain(
     'conversation.composer',
-    { sessionId, session, pendingInteraction },
+    { sessionId, session, pendingInteraction, view },
     { fallback: composerBar, fallbackOnly: sessionId === undefined, overlay: true },
   )
 

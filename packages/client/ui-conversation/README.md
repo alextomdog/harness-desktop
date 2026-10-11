@@ -114,6 +114,14 @@ interface ComposerChainProps {
   session: SessionSnapshot | undefined
   /** Effective business-owned interaction awaiting the user in this Session. */
   pendingInteraction: SessionPendingInteraction | undefined
+  /**
+   * The Conversation View this Session is showing: the resolved tab, never a
+   * stored preference that resolves elsewhere, so an unresolved preference
+   * reads as Chat. An absent Session also reports Chat — there is no tab strip
+   * to elect from and the Hero composer belongs to Chat — and the Browser's
+   * 「网页」 view elects its own entry from this to take the composer seat.
+   */
+  readonly view: string
 }
 ```
 

@@ -116,6 +116,9 @@ const kit: Omit<QuestionComposerProps, 'matched'> = {
   sessionId: SID,
   session: undefined,
   pendingInteraction: undefined,
+  // The plan review reads none of the chain owner currency; Chat is the
+  // ordinary View it is raised in.
+  view: 'chat',
   useSession: selector => selector(sessionState),
   useSessions: selector => selector(sessionList),
   usePanelInfo, useResource,

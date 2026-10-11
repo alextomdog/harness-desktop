@@ -115,6 +115,9 @@ const kitBase: Omit<QuestionComposerProps, 'matched' | 'useStore' | 'useQuestion
   session: undefined,
   sessionId: SID,
   pendingInteraction: undefined,
+  // The question composer reads none of the chain owner currency; Chat is the
+  // ordinary View it is raised in.
+  view: 'chat',
   useSession: selector => selector(sessionState),
   useSessions: selector => selector(sessionList),
   usePanelInfo, useResource,

@@ -297,6 +297,40 @@ describe('Conversation inject API', () => {
     await b.runtime.dispose()
   })
 
+  it('publishes the View a Session is showing to the composer chain owner', async () => {
+    const b = await bench()
+    const removeChat = b.slots.register(
+      { name: 'conversation.view', id: 'chat', order: 0 },
+      (() => null) as never,
+    )
+    const removeWeb = b.slots.register(
+      { name: 'conversation.view', id: 'web', order: 20 },
+      (() => null) as never,
+    )
+    await b.runtime.flush()
+    try {
+      // The source is the same observable across reads: the chain owner hook
+      // rides one store per Session, not a fresh value on every inject.
+      const source = b.residentApi(ROOT).hooks.view
+      expect(source.getSnapshot()).toBe('chat')
+
+      b.headerApi(ROOT).injected.selectView('web')
+      expect(source.getSnapshot()).toBe('web')
+      expect(b.residentApi(ROOT).hooks.view).toBe(source)
+
+      b.conversationApi(ROOT).injected.openView('chat', 'focus-1')
+      expect(source.getSnapshot()).toBe('chat')
+
+      // Without a Session there is no tab strip to elect from; the Hero
+      // composer belongs to Chat, so the owner reports Chat and never null.
+      expect(b.residentApi(undefined).hooks.view.getSnapshot()).toBe('chat')
+    } finally {
+      removeWeb()
+      removeChat()
+      await b.runtime.dispose()
+    }
+  })
+
   it('restores the selected View when a cached Session becomes Provider-bound', async () => {
     const b = await bench()
     const binding = b.runtime.ctx.uiConversation.binding(ROOT)

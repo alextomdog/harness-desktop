@@ -138,6 +138,8 @@ function mount(
     nestedSubagent?: boolean
     /** A composer block another plugin raised for this session. */
     composerBlock?: { reason: string }
+    /** The effective Conversation View the content occurrence is showing. */
+    composerView?: string
     /** Mutable view ledger used by registration-order regressions. */
     viewTabs?: ViewTab[]
   } = {},
@@ -185,6 +187,8 @@ function mount(
   const open = vi.fn()
   const slotCalls: string[] = []
   const lineageOwners: ConversationHeaderLineageOwnerProps[] = []
+  /** Owner currency handed to the composer chain, per render. */
+  const composerOwners: { view: string; sessionId: SessionId | undefined }[] = []
   const viewTabs = options.viewTabs ?? [
     { id: 'chat', label: 'Chat' },
     { id: 'trajectory', label: 'Trajectory' },
@@ -308,8 +312,10 @@ function mount(
     }
     return <div data-testid={`view-${opts?.only ?? key}`} />
   }) as ConversationContentProps['renderSlot']
-  const renderSlotChain = ((_key, _owner, opts) => (
-    options.overlayTakeover === true
+  const renderSlotChain = ((_key, owner, opts) => {
+    const currency = owner as { view: string; sessionId: SessionId | undefined }
+    composerOwners.push({ view: currency.view, sessionId: currency.sessionId })
+    return options.overlayTakeover === true
       ? (
         <>
           <div data-chain-overlay-fallback="conversation.composer" style={{ display: 'none' }}>
@@ -319,7 +325,7 @@ function mount(
         </>
       )
       : (opts?.fallback ?? null)
-  )) as ConversationContentProps['renderSlotChain']
+  }) as ConversationContentProps['renderSlotChain']
   const SessionProvider: ConversationContentProps['SessionProvider'] = ({ children }) => children
   const renderFactorySlot = ((_name: string, input: ConversationContentInputProps, factoryOptions?: {
     slots?: Record<string, (props: never) => ReactNode>
@@ -339,6 +345,7 @@ function mount(
       useWorkspaces: bindSnapshotSelector(workspaces),
       useProjection: (() => undefined),
       useComposerBlock: select => select(options.composerBlock),
+      useView: select => select(options.composerView ?? 'chat'),
       useInput,
       inputActions,
       renderSlot,
@@ -375,6 +382,7 @@ function mount(
   const view = render(<ConversationMainPanel {...props} />)
   return {
     view, store, wiring, sink, retargetWorkspace, session, conversation, slotCalls, lineageOwners, seatOwners, open,
+    composerOwners,
     pickerOwner: () => pickerOwner,
     rerender: () => { view.rerender(<ConversationMainPanel {...props} />) },
   }
@@ -529,6 +537,22 @@ describe('ConversationRoot resident composer', () => {
     const fallback = b.view.container.querySelector('[data-chain-overlay-fallback="conversation.composer"]')
     expect(seat?.contains(takeover)).toBe(true)
     expect(seat?.contains(fallback)).toBe(true)
+  })
+
+  it('addresses the composer chain by the effective View, so a View that is not the Conversation can vote', () => {
+    // The chain's routing decision is a pure function of the owner currency,
+    // and the View is what tells a business-owned View (the Browser's 「网页」)
+    // that the composer seat is its own to take. Both directions are asserted:
+    // a Chat session still routes to the default bar.
+    const chat = mount(sessionSnapshotOf(), undefined, undefined, { composerView: 'chat' })
+    expect(chat.composerOwners.at(-1)).toEqual({ view: 'chat', sessionId: SID })
+    expect(chat.view.getByRole('textbox')).toBeTruthy()
+
+    const web = mount(sessionSnapshotOf(), undefined, undefined, { composerView: 'web' })
+    expect(web.composerOwners.at(-1)).toEqual({ view: 'web', sessionId: SID })
+
+    const hero = mount(sessionSnapshotOf(), [], undefined, { sessionId: undefined })
+    expect(hero.composerOwners.at(-1)).toEqual({ view: 'chat', sessionId: undefined })
   })
 
   it('hero phase: keeps sidebar controls accessible while hiding conversation chrome', () => {

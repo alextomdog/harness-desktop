@@ -152,6 +152,8 @@ describe('apply', () => {
         ? undefined
         : ({ subagent, running } as SessionSnapshot),
       pendingInteraction: undefined,
+      // This selector never reads the View; Chat is the ordinary case it meets.
+      view: 'chat',
     })
     expect(select(owner(undefined))).toBeNull()
     expect(select(owner(null))).toBeNull()

@@ -4,7 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ISessions, SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import { IconPaperclipOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import { createSnapshotStore, type BoundActions } from '@deepseek-ai/dsh-client-store'
+import { createSnapshotStore, type BoundActions, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only service and declaration merges used by this assembly.
@@ -41,7 +41,7 @@ import { ConversationSession, ConversationSessionHeader } from './skeleton/Conve
 import { InputBar } from './skeleton/InputBar.tsx'
 import { todoDockEntry } from './skeleton/TodoPanel.tsx'
 import { installStopShortcut } from './stop-shortcut.ts'
-import { TRAJECTORY_VIEW_ID, resolveActiveView } from './view-selection.ts'
+import { TRAJECTORY_VIEW_ID, DEFAULT_VIEW_ID, resolveActiveView } from './view-selection.ts'
 import { en, NS, zh, type ConversationKey } from './locales.ts'
 import { CONVERSATION_SETTINGS_NAMESPACE, type ConversationSettings } from '../submission-settings.ts'
 
@@ -76,6 +76,13 @@ const ABSENT_NOTICES = {
 }
 const ABSENT_BLOCK = {
   getSnapshot: (): ComposerBlock | undefined => undefined,
+  subscribe: () => () => {},
+}
+// Without a Session there is no tab strip and no View to elect from: the Hero
+// composer is Chat's own, so the chain owner reports the Chat fallback. The
+// chain is `fallbackOnly` in that state, so no entry is consulted anyway.
+const ABSENT_VIEW = {
+  getSnapshot: (): string => DEFAULT_VIEW_ID,
   subscribe: () => () => {},
 }
 const EMPTY_LEXICON: ReadonlyMap<'/' | '@', readonly string[]> = new Map()
@@ -190,9 +197,31 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     }
     return tabs
   }
+  // The View a Session is showing belongs to the Conversation store, but the
+  // composer chain is rendered by the resident content occurrence, which has no
+  // Conversation store of its own. So the resolved View is republished here —
+  // one snapshot source per Session, read through the Factory inject face —
+  // exactly the way a composer block reaches the bar.
+  const activeViews = new Map<SessionId, SnapshotStore<string>>()
+  const viewStore = (sessionId: SessionId): SnapshotStore<string> => {
+    const existing = activeViews.get(sessionId)
+    if (existing !== undefined) return existing
+    // Seeded from the same preference the binding restore reads, so the chain
+    // routes by the real View even if a render lands before that restore.
+    const created = createSnapshotStore<string>(
+      resolveActiveView(viewTabs(), readConversationViewPreference(sessionId))?.id ?? DEFAULT_VIEW_ID)
+    activeViews.set(sessionId, created)
+    return created
+  }
+  const publishView = (sessionId: SessionId, view: string): void => {
+    const store = viewStore(sessionId)
+    if (store.getSnapshot() !== view) store.set(view)
+  }
   const activateView = (sessionId: SessionId, preferred: string | null): void => {
     const active = resolveActiveView(viewTabs(), preferred)
-    if (active !== undefined) uiConversation.binding(sessionId).activate(active.id)
+    if (active === undefined) return
+    uiConversation.binding(sessionId).activate(active.id)
+    publishView(sessionId, active.id)
   }
   const restoreView = (sessionId: SessionId): void => {
     activateView(sessionId, readConversationViewPreference(sessionId))
@@ -204,7 +233,10 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     if (trackedBindings.has(binding)) return
     trackedBindings.add(binding)
     bindings.add(binding)
-    binding.ctx.effect(() => () => { bindings.delete(binding) }, 'ui-conversation: active Provider binding')
+    binding.ctx.effect(() => () => {
+      bindings.delete(binding)
+      activeViews.delete(binding.sessionId)
+    }, 'ui-conversation: active Provider binding')
   }
   const refreshViews = (): void => {
     const current = conversationViews.getSnapshot()
@@ -326,6 +358,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
       hooks: {
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
+        view: sessionId === undefined ? ABSENT_VIEW : viewStore(sessionId),
       },
       selectWorkspace: workspaceId => workspaceNavigation.openWorkspace(workspaceId, (nextId) => {
         if (sessionId !== undefined && nextId !== sessionId) {

@@ -329,8 +329,14 @@ export type ConvViewProps = PropsRuntime<'conversation.view'>
 export interface ConversationInjected {
   /** Connect and open a blank Session in the selected Workspace. */
   selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
-  /** Session-addressed composer block source, or the stable absent source. */
-  hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
+  /**
+   * Session-addressed composer Hook sources: the block one business raised for
+   * this Session, and the View the Session is actually showing.
+   */
+  hooks: {
+    composerBlock: ObservableSnapshot<ComposerBlock | undefined>
+    view: ObservableSnapshot<string>
+  }
 }
 
 /** Business callbacks injected into the strict Session body. */
@@ -446,6 +452,14 @@ export interface ComposerChainProps {
   session: SessionSnapshot | undefined
   /** Effective business-owned interaction awaiting the user in this Session. */
   pendingInteraction: SessionPendingInteraction | undefined
+  /**
+   * The Conversation View this Session is showing: the resolved tab, never a
+   * stored preference that resolves elsewhere, so an unresolved preference
+   * reads as Chat. An absent Session also reports Chat — there is no tab strip
+   * to elect from and the Hero composer belongs to Chat — and the Browser's
+   * 「网页」 view elects its own entry from this to take the composer seat.
+   */
+  readonly view: string
 }
 
 /** Presentation props supplied to the blank-session brand mark. */
