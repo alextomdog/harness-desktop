@@ -66,7 +66,15 @@ export function DefaultConversationViews({
         // page is attached to never leaves it; the others are hidden, not removed.
         // The area class is the one the View used to sit in directly: without it this
         // wrapper has no height of its own, and the View inside it is short.
-        <div key={id} className={css.viewArea} hidden={id !== shown.current} data-conversation-view={id}>
+        // display, not the hidden attribute: the area class sets display, and a class rule outranks
+        // the user agent's [hidden] rule, so a hidden attribute left every visited view on screen at
+        // once. An inline style is not outranked by anything here.
+        <div
+          key={id}
+          className={css.viewArea}
+          style={id === shown.current ? undefined : { display: 'none' }}
+          data-conversation-view={id}
+        >
           {renderSlot('conversation.view', owner, { only: id })}
         </div>
       ))}
