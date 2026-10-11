@@ -64,7 +64,9 @@ export function DefaultConversationViews({
       {areas.map(id => (
         // One area per visited View, kept in the document so the element a guest
         // page is attached to never leaves it; the others are hidden, not removed.
-        <div key={id} hidden={id !== shown.current} data-conversation-view={id}>
+        // The area class is the one the View used to sit in directly: without it this
+        // wrapper has no height of its own, and the View inside it is short.
+        <div key={id} className={css.viewArea} hidden={id !== shown.current} data-conversation-view={id}>
           {renderSlot('conversation.view', owner, { only: id })}
         </div>
       ))}
