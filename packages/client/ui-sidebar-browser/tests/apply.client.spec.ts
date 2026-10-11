@@ -11,7 +11,7 @@ import { WebView } from '../src/client/view/WebView.tsx'
 import { BrowserTitle } from '../src/client/view/BrowserTitle.tsx'
 import type { BrowserInjected } from '../src/client/browser/BrowserController.ts'
 import { BROWSER_ID, BROWSER_KIND } from '../src/client/definition.tsx'
-import { apply, inject } from '../src/client/index.ts'
+import { apply, inject, WEB_VIEW_ID } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { createBrowserStore } from '../src/client/browser/store.ts'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
@@ -30,6 +30,8 @@ interface Recorded {
   locale?: string
   store?: unknown
   inject?: unknown
+  priority?: number
+  select?: unknown
   component: unknown
 }
 
@@ -136,6 +138,9 @@ describe('ui-sidebar-browser apply', () => {
       ['sidebar.right.pane.tab', BROWSER_ID, 'sidebarBrowser', BrowserBody],
       // The same browser, seated by the Conversation's own view.
       ['conversation.view', undefined, 'sidebarBrowser', WebView],
+      // And the view's own claim on the composer seat, so the page fills it
+      // (the silent component's behavior is asserted on its own below).
+      ['conversation.composer', undefined, undefined, expect.any(Function)],
       ['sidebar.right.pane.tab.title', BROWSER_ID, undefined, BrowserTitle],
     ])
     expect(registered[0]?.store).toBeDefined()
@@ -169,6 +174,26 @@ describe('ui-sidebar-browser apply', () => {
     const h = await boot('macos', 'web')
     try { expect(h.registry.catalog.getSnapshot()[0]?.binding).toEqual({ code: 'KeyT', modifiers: ['alt', 'meta'] }) }
     finally { await h.fiber.dispose() }
+  })
+
+  it('claims the Conversation composer only while the web view is the one showing', async () => {
+    const { registered, fiber } = await boot()
+    try {
+      const entry = registered.find(record => record.name === 'conversation.composer')!
+      // Interactions outrank this takeover: a pending question (0) or approval
+      // (1) is the only way a blocked agent gets answered, so the view claims
+      // the ordinary composer and leaves those seats alone.
+      expect(entry.priority).toBe(10)
+      const select = entry.select as (owner: { readonly view: string }) => unknown
+      expect(select({ view: WEB_VIEW_ID })).toEqual({ taken: true })
+      expect(select({ view: 'chat' })).toBeNull()
+      expect(select({ view: 'trajectory' })).toBeNull()
+      // Rendering nothing IS the takeover: the chain hides the input card
+      // (display: none) but keeps it mounted, so a Chat draft survives the visit.
+      expect((entry.component as () => unknown)()).toBeNull()
+    } finally {
+      await fiber.dispose()
+    }
   })
 
   it('removes every registration when the plugin is disposed', async () => {

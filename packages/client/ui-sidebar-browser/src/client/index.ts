@@ -1,6 +1,7 @@
 /** Register the HTTP(S) Browser tab type in the right Sidebar. */
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { Context } from '@deepseek-ai/cordis'
+import type { ComposerChainProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -39,6 +40,28 @@ declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
 
 /** Required Browser services. */
 export const inject = ['slots', 'locale', 'sidebarRight', 'sidebarRightTabs']
+
+/** Registered identity of the Conversation View the Browser seats itself in. */
+export const WEB_VIEW_ID = 'web'
+
+/** What this View's composer takeover hands its (silent) component. */
+interface WebViewComposerTaken {
+  readonly taken: true
+}
+
+/**
+ * The 「网页」 View is not part of the Conversation, so the Conversation's
+ * composer is not part of it either: this entry takes the seat for the View and
+ * renders nothing, which leaves the whole frame to the page.
+ *
+ * Nothing is lost by taking it: the chain's `overlay` keeps the fallback
+ * MOUNTED under an election (hidden, not unmounted), so a draft typed in Chat
+ * is still there when the reader comes back to it.
+ * @returns nothing, deliberately.
+ */
+function NoWebViewComposer(): null {
+  return null
+}
 
 /** Register the Browser type, localized guide entry, body, and title. */
 export function apply(ctx: Context): void {
@@ -102,7 +125,7 @@ export function apply(ctx: Context): void {
     // scope's controllers and factory, so the two seats share one browser per Session —
     // which is right, because the state is keyed by surface and the surfaces differ.
     scope.effect(() => scope.slots.inject('conversation.view', () => scope.slots.register({
-      name: 'conversation.view', id: 'web', order: 20, locale: namespace, store,
+      name: 'conversation.view', id: WEB_VIEW_ID, order: 20, locale: namespace, store,
       label: () => t('view.web'),
       inject: (sessionId, actions) => {
         const existing = controllers.get(sessionId)
@@ -126,6 +149,18 @@ export function apply(ctx: Context): void {
     installFrames(scope, sessionId => options => createElectronPage(options, desktop,
       signal => browserWorkspace(scope.workspaces.list, sessionId, signal)))
   })
+  // While the 「网页」 View is the one on screen, the Conversation's own composer
+  // is not wanted under it: the entry below renders nothing, so the page keeps
+  // the frame the input card used to take. Priority 10 deliberately trails every
+  // interaction takeover (a read-only subagent at -10, a question at 0, an
+  // approval at 1) — those are how a blocked agent gets answered, and burying
+  // one behind a web page would strand it. Only the ordinary composer is taken.
+  ctx.effect(() => ctx.slots.inject('conversation.composer', () => ctx.slots.register({
+    name: 'conversation.composer',
+    priority: 10,
+    select: (owner: ComposerChainProps): WebViewComposerTaken | null =>
+      owner.view === WEB_VIEW_ID ? { taken: true } : null,
+  }, NoWebViewComposer)), 'ui-sidebar-browser.composer')
   // A page the Host asked for, opened through the app's own tab API — the same call a
   // chat link makes — so an agent facing an empty sidebar still gets something to drive.
   if (desktop !== undefined) {
