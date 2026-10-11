@@ -89,6 +89,9 @@ if (location.protocol === `${SCHEME}:` && location.hostname === 'app') {
   // File without one (pasted bytes) answers '' and uploads as before.
   contextBridge.exposeInMainWorld('__DSH_HOST_PATHS__', {
     pathFor: (file: File) => webUtils.getPathForFile(file),
+    // The same concern from the other side: a path dropped INTO the app becomes a reference, and a
+    // path dragged OUT of it becomes a real file a page can upload.
+    startDrag: (path: string) => ipcRenderer.invoke(DESKTOP_IPC.fileDrag, path) as Promise<boolean>,
   })
   contextBridge.exposeInMainWorld('dshDesktopBoot', {
     ready: () => ipcRenderer.invoke(DESKTOP_IPC.boot) as Promise<unknown>,

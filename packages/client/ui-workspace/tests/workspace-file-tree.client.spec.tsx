@@ -493,3 +493,47 @@ describe('WorkspaceFileTree', () => {
     expect(pasteFiles.mock.calls[1]?.[2]).toBe('')
   })
 })
+
+it('hands a lone file to a desktop host that can drag the file itself', async () => {
+  const startDrag = vi.fn(async () => true)
+  vi.stubGlobal('__DSH_HOST_PATHS__', { startDrag })
+  try {
+    const listDirectory = listingSource({
+      '.': { path: '', truncated: false, entries: [{ name: 'a.py', type: 'file' }] },
+    })
+    mount({ listDirectory, workspaceRoot: 'D:/ws-a' })
+    const row = ((await screen.findByText('a.py')).closest('[role=treeitem]') as HTMLElement)
+    fireEvent.click(row)
+    const transfer = { setData: vi.fn(), effectAllowed: '' }
+    fireEvent.dragStart(row, { dataTransfer: transfer })
+    // The host carries the file itself, so nothing is written as text: a path written into an upload
+    // field is text in the box, not a file the page can send.
+    expect(startDrag).toHaveBeenCalledWith('D:/ws-a/a.py')
+    expect(transfer.setData).not.toHaveBeenCalled()
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('keeps offering the path when several rows travel together', async () => {
+  const startDrag = vi.fn(async () => true)
+  vi.stubGlobal('__DSH_HOST_PATHS__', { startDrag })
+  try {
+    const listDirectory = listingSource({
+      '.': {
+        path: '',
+        truncated: false,
+        entries: [{ name: 'a.py', type: 'file' }, { name: 'b.py', type: 'file' }],
+      },
+    })
+    mount({ listDirectory })
+    const first = ((await screen.findByText('a.py')).closest('[role=treeitem]') as HTMLElement)
+    const second = (screen.getByText('b.py').closest('[role=treeitem]') as HTMLElement)
+    fireEvent.click(first)
+    fireEvent.click(second, { shiftKey: true })
+    const dragged = (screen.getByText('a.py').closest('[role=treeitem]') as HTMLElement)
+    const transfer = { setData: vi.fn(), effectAllowed: '' }
+    fireEvent.dragStart(dragged, { dataTransfer: transfer })
+    // A native drag carries one file, and this tree can name several: the path stays the answer.
+    expect(startDrag).not.toHaveBeenCalled()
+    expect(transfer.setData).toHaveBeenCalled()
+  } finally { vi.unstubAllGlobals() }
+})

@@ -25,6 +25,7 @@ export const DESKTOP_IPC = {
   browserOpenRequested: 'dsh-desktop:browser-open-requested',
   browserNewPageRequested: 'dsh-desktop:browser-new-page-requested',
   directoryPick: 'dsh-desktop:directory-pick',
+  fileDrag: 'dsh-desktop:file-drag',
   deviceInfo: 'dsh-desktop:device-info',
   localeBootstrap: 'dsh-desktop:locale-bootstrap',
   localeChanged: 'dsh-desktop:locale-changed',

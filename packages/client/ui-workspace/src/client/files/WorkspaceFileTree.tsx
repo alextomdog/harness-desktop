@@ -159,6 +159,18 @@ interface MenuState {
 const ERRORED: DirectoryState = { status: 'error', entries: [], truncated: false }
 
 /** Join a workspace-relative directory and a child name into a workspace path. */
+/**
+ * The desktop host's native file drag, when this build has one.
+ *
+ * A drag that carries a path is text; a drop target that wants a file — the page in the sidebar, or any
+ * other application — writes that text into itself instead of uploading. The host can start a drag that
+ * carries the real file, which is what an upload field accepts.
+ * @returns the host's drag entry point, or undefined in a build without one.
+ */
+function hostFileDrag(): ((path: string) => Promise<boolean>) | undefined {
+  return (globalThis as { __DSH_HOST_PATHS__?: { startDrag?: (path: string) => Promise<boolean> } })
+    .__DSH_HOST_PATHS__?.startDrag
+}
 function childPath(parent: string, name: string): string {
   return parent === '' ? name : `${parent}/${name}`
 }
@@ -572,6 +584,18 @@ export function WorkspaceFileTree({
               draggable
               onDragStart={(event) => {
                 event.dataTransfer.effectAllowed = 'copy'
+                // One file and a host that can drag it: the platform carries the file itself, which is
+                // what a page's upload field accepts. Several files, or a folder, keep the path below:
+                // this tree can name them, and a native drag carries one file.
+                const lone = selection.has(row.path)
+                  ? rows.filter(candidate => selection.has(candidate.path))
+                  : [row]
+                const startDrag = hostFileDrag()
+                if (startDrag !== undefined && lone.length === 1 && lone[0]?.type === 'file') {
+                  event.preventDefault()
+                  void startDrag(absolutePath(workspaceRoot, lone[0].path))
+                  return
+                }
                 // Everything the reader has taken travels together. A drag out of a selection says
                 // "these", and a lane carrying only the row under the pointer would silently drop
                 // the rest of what they chose — one chip where they picked seven.
