@@ -74,6 +74,10 @@ export function DefaultConversationViews({
           className={css.viewArea}
           style={id === shown.current ? undefined : { display: 'none' }}
           data-conversation-view={id}
+          // Marks the one being looked at. A retained View keeps its composer overlay in the document
+          // while it is hidden, and the stylesheet's `:has()` would otherwise match it and clip the
+          // active View's area — which stopped the conversation from scrolling at all.
+          data-view-active={id === shown.current ? '' : undefined}
         >
           {renderSlot('conversation.view', owner, { only: id })}
         </div>
