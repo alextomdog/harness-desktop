@@ -1,5 +1,5 @@
 /** The Conversation's 「网页」 view: the same browser body, seated by a view instead of a dock tab. */
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InjectFace, PropsLocale, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
@@ -26,6 +26,15 @@ export const WEB_VIEW_SURFACE_ID = 'conversation-web-view'
  * outlives every unmount, which is what makes the page stay where it was.
  */
 const WEB_VIEW_SIGNAL = new AbortController()
+
+/**
+ * The last address this view showed, for the whole application rather than one Session.
+ *
+ * A Session that has never opened the view would otherwise show an empty address bar, because the
+ * saved state belongs to the Session: the reader switching conversations expects to find the page
+ * they were on, not a blank one.
+ */
+let lastAddress: string | undefined
 
 /** Props the view needs: its own runtime share plus what the browser body reads from any seat. */
 export type WebViewProps = ConvViewProps
@@ -55,7 +64,11 @@ export function WebView(props: WebViewProps): ReactNode {
   // changed surface remounts the body, which reloads the very page the reader is typing into — the
   // flicker, and the keystrokes that never arrive, both come from that.
   const saved = useStore(state => state.byTab[WEB_VIEW_SURFACE_ID])
-  const firstUrl = useRef(currentBrowserTarget(saved)?.url)
+  const savedUrl = currentBrowserTarget(saved)?.url
+  // Remember it for the next Session that opens this view, and start from this Session's own
+  // address when it has one.
+  useEffect(() => { if (savedUrl !== undefined) lastAddress = savedUrl }, [savedUrl])
+  const firstUrl = useRef(savedUrl ?? lastAddress)
   const surface = useMemo<BrowserSurface>(() => ({
     id: WEB_VIEW_SURFACE_ID,
     signal: WEB_VIEW_SIGNAL.signal,
