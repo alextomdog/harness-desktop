@@ -44,6 +44,16 @@ export const inject = ['slots', 'locale', 'sidebarRight', 'sidebarRightTabs']
 /** Registered identity of the Conversation View the Browser seats itself in. */
 export const WEB_VIEW_ID = 'web'
 
+/**
+ * The 「网页」 seat's controller key, deliberately not a Session id.
+ *
+ * The reader wants the page they are looking at to survive a switch to another conversation, and
+ * a controller keyed by Session gave every conversation its own browser: the switch handed the view
+ * different saved state, which navigated it and reloaded the page. One controller for the whole
+ * application is what makes the page the same page. The dock seat keeps its per-Session key.
+ */
+const WEB_VIEW_CONTROLLER_KEY = 'conversation-web-view'
+
 /** What this View's composer takeover hands its (silent) component. */
 interface WebViewComposerTaken {
   readonly taken: true
@@ -97,7 +107,8 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(namespace, { zh, en }), 'ui-sidebar-browser.copy')
   ctx.effect(() => ctx.sidebarRightTabs.register({ ...browserDefinition(t), keepMounted: desktop !== undefined }), 'ui-sidebar-browser.type')
   const installFrames = (scope: Context, factory: (sessionId: BrowserBodyProps['sessionId']) => BrowserPageFactory): void => {
-    const controllers = new Map<BrowserBodyProps['sessionId'], BrowserInjected>()
+    // Keyed by Session for the dock seat, and by WEB_VIEW_CONTROLLER_KEY for the shared 「网页」 seat.
+    const controllers = new Map<string, BrowserInjected>()
     scope.effect(() => async () => {
       const pending = [...controllers.values()].map(controller => controller.dispose())
       controllers.clear()
@@ -106,6 +117,8 @@ export function apply(ctx: Context): void {
     scope.effect(() => scope.slots.inject('sidebar.right.pane.tab', () => scope.slots.register({
       name: 'sidebar.right.pane.tab', key: BROWSER_ID, locale: namespace, store,
       inject: (sessionId, actions) => {
+        // One controller for every Session: see WEB_VIEW_CONTROLLER_KEY. rebind still hands it
+        // the acting Session's actions, so its commands keep working after a switch.
         const existing = controllers.get(sessionId)
         if (existing !== undefined) {
           existing.rebind(actions)
@@ -128,7 +141,7 @@ export function apply(ctx: Context): void {
       name: 'conversation.view', id: WEB_VIEW_ID, order: 20, locale: namespace, store,
       label: () => t('view.web'),
       inject: (sessionId, actions) => {
-        const existing = controllers.get(sessionId)
+        const existing = controllers.get(WEB_VIEW_CONTROLLER_KEY)
         if (existing !== undefined) {
           existing.rebind(actions)
           return existing
@@ -139,7 +152,7 @@ export function apply(ctx: Context): void {
         const controller = createBrowserControllers(actions, factory(sessionId), tabId =>
           tabId === WEB_VIEW_SURFACE_ID
           || openTabs.getSnapshot().some(tab => tab.sessionId === sessionId && tab.tabId === tabId))
-        controllers.set(sessionId, controller)
+        controllers.set(WEB_VIEW_CONTROLLER_KEY, controller)
         return controller
       },
     }, WebView)), 'ui-sidebar-browser.webView')
