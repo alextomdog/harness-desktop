@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { BrowserBody, type BrowserBodyProps } from './view/BrowserBody.tsx'
-import { WebView } from './view/WebView.tsx'
+import { WEB_VIEW_SURFACE_ID, WebView } from './view/WebView.tsx'
 import { BrowserTitle } from './view/BrowserTitle.tsx'
 import { createBrowserControllers } from './browser/BrowserController.ts'
 import type { BrowserInjected } from './browser/BrowserController.ts'
@@ -88,8 +88,12 @@ export function apply(ctx: Context): void {
           existing.rebind(actions)
           return existing
         }
+        // The view is a resident, not a dock tab: it is always in the view list, so its surface is
+        // always in use. Saying otherwise let the release path forget its saved page, which is why
+        // coming back to the view showed nothing at all.
         const controller = createBrowserControllers(actions, factory(sessionId), tabId =>
-          openTabs.getSnapshot().some(tab => tab.sessionId === sessionId && tab.tabId === tabId))
+          tabId === WEB_VIEW_SURFACE_ID
+          || openTabs.getSnapshot().some(tab => tab.sessionId === sessionId && tab.tabId === tabId))
         controllers.set(sessionId, controller)
         return controller
       },
@@ -106,8 +110,12 @@ export function apply(ctx: Context): void {
           existing.rebind(actions)
           return existing
         }
+        // The view is a resident, not a dock tab: it is always in the view list, so its surface is
+        // always in use. Saying otherwise let the release path forget its saved page, which is why
+        // coming back to the view showed nothing at all.
         const controller = createBrowserControllers(actions, factory(sessionId), tabId =>
-          openTabs.getSnapshot().some(tab => tab.sessionId === sessionId && tab.tabId === tabId))
+          tabId === WEB_VIEW_SURFACE_ID
+          || openTabs.getSnapshot().some(tab => tab.sessionId === sessionId && tab.tabId === tabId))
         controllers.set(sessionId, controller)
         return controller
       },
