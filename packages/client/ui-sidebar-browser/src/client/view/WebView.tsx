@@ -1,5 +1,5 @@
 /** The Conversation's 「网页」 view: the same browser body, seated by a view instead of a dock tab. */
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InjectFace, PropsLocale, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
@@ -17,6 +17,15 @@ import { BrowserSurfaceBody, type BrowserSurface, type BrowserSurfaceBodyProps }
  * surface key was widened for.
  */
 export const WEB_VIEW_SURFACE_ID = 'conversation-web-view'
+
+/**
+ * The view's browsing signal, held for the whole application rather than for one mount.
+ *
+ * mount disposes a surface only when its signal is a different one, so a signal that lived and
+ * died with the component destroyed the page every time the reader looked at another view. This one
+ * outlives every unmount, which is what makes the page stay where it was.
+ */
+const WEB_VIEW_SIGNAL = new AbortController()
 
 /** Props the view needs: its own runtime share plus what the browser body reads from any seat. */
 export type WebViewProps = ConvViewProps
@@ -39,11 +48,7 @@ export function WebView(props: WebViewProps): ReactNode {
   const { loadUrl, useStore } = props
   // Stopping is the view's own business: a view that unmounts must not leave a page loaded behind
   // it, and a dock tab's signal is not this view's to end.
-  const alive = useRef(new AbortController())
-  useEffect(() => {
-    const controller = alive.current
-    return () => { controller.abort() }
-  }, [])
+
   // A saved checkpoint alone never starts a page — the controller says so itself — so the last
   // address this view recorded is handed back as its initial navigation. Taken ONCE, at mount: a
   // value that followed the store would change every time the page recorded a navigation, and a
@@ -53,7 +58,7 @@ export function WebView(props: WebViewProps): ReactNode {
   const firstUrl = useRef(currentBrowserTarget(saved)?.url)
   const surface = useMemo<BrowserSurface>(() => ({
     id: WEB_VIEW_SURFACE_ID,
-    signal: alive.current.signal,
+    signal: WEB_VIEW_SIGNAL.signal,
     initialUrl: firstUrl.current,
     refreshShortcut: undefined,
     // No dock command reaches a view, so there is nothing to bind a refresh to.
