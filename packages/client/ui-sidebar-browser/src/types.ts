@@ -6,6 +6,13 @@ export type DesktopBrowserLeaseId = Branded<'DesktopBrowserLeaseId'>
 
 /** A guest's approved, process-local storage partition. */
 export interface DesktopBrowserReservation {
+  /**
+   * File URL of a script the guest runs before any page script, when the host supplies one.
+   *
+   * A gateway asks questions only a browser answers truthfully, and it asks them before the page runs;
+   * a host that knows the answers states them here rather than after the document exists.
+   */
+  readonly preload?: string
   readonly lease: DesktopBrowserLeaseId
   readonly partition: string
 }

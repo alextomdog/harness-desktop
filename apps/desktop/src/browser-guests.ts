@@ -1,5 +1,8 @@
 /** Main-process ownership and fixed isolation policy for Sidebar webview guests. */
 import { createHash, randomUUID } from 'node:crypto'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, session, type Session, type WebContents } from 'electron'
 import type {
   DesktopBrowserLeaseId,
@@ -10,6 +13,51 @@ import { offersPage } from './browser-pages.ts'
 import { DESKTOP_IPC } from './ipc.ts'
 
 
+/**
+ * The script every sidebar guest runs before its page does.
+ *
+ * A gateway's own script asks whether the page is a real Chrome and refuses to load when the answer is
+ * this build's brand set — which leaves the document's parser waiting for a script that never arrives,
+ * so the page never draws. Chromium reports those brands from the engine, and the only moment they can
+ * be answered differently is before the page runs, which is what a preload is for. Written beside the
+ * application's data so it is deployed with the app and stays current with it.
+ * @returns a file URL for the guest's preload, or undefined when it cannot be written.
+ */
+function guestPreloadUrl(): string | undefined {
+  const source = `try {
+  var brands = [
+    { brand: 'Chromium', version: '${process.versions.chrome.split('.')[0]}' },
+    { brand: 'Not;A=Brand', version: '24' },
+    { brand: 'Google Chrome', version: '${process.versions.chrome.split('.')[0]}' },
+  ];
+  var full = [
+    { brand: 'Chromium', version: '${process.versions.chrome}' },
+    { brand: 'Not;A=Brand', version: '24.0.0.0' },
+    { brand: 'Google Chrome', version: '${process.versions.chrome}' },
+  ];
+  var platform = ${JSON.stringify(process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux')};
+  var data = {
+    brands: brands, mobile: false, platform: platform,
+    getHighEntropyValues: function () {
+      return Promise.resolve({ architecture: 'x86', bitness: '64', brands: brands, fullVersionList: full,
+        mobile: false, model: '', platform: platform, platformVersion: '10.0.0',
+        uaFullVersion: '${process.versions.chrome}', wow64: false, formFactors: ['Desktop'] });
+    },
+    toJSON: function () { return { brands: brands, mobile: false, platform: platform }; },
+  };
+  Object.defineProperty(Navigator.prototype, 'userAgentData', { configurable: true, get: function () { return data; } });
+} catch (error) { /* a page that cannot be answered for is left exactly as it was */ }
+`
+  try {
+    const directory = app.getPath('userData')
+    const file = join(directory, 'browser-guest-preload.js')
+    mkdirSync(directory, { recursive: true })
+    if (!readFileSync(file, 'utf8').includes(source)) writeFileSync(file, source, 'utf8')
+    return pathToFileURL(file).href
+  } catch {
+    return undefined
+  }
+}
 interface GuestLease {
   readonly owner: WebContents
   readonly partition: string
@@ -154,7 +202,8 @@ export class DesktopBrowserGuests {
     }
     const lease = randomUUID() as DesktopBrowserLeaseId
     this.leases.set(lease, { owner, partition, attached: false })
-    return { lease, partition }
+    const preload = guestPreloadUrl()
+    return preload === undefined ? { lease, partition } : { lease, partition, preload }
   }
 
   /**

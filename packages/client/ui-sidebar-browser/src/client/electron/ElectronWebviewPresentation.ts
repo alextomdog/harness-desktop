@@ -61,6 +61,9 @@ export class ElectronWebviewPresentation implements BrowserPresentation {
     element.dataset.sidebarBrowserFrame = 'webview'
     element.setAttribute('name', reservation.lease)
     element.setAttribute('partition', reservation.partition)
+    // Before the guest navigates: whatever identity the host supplies has to be in place before the
+    // page's own scripts run, because that is when a gateway asks its questions.
+    if (reservation.preload !== undefined) element.setAttribute('preload', reservation.preload)
     element.setAttribute('allowpopups', '')
     element.setAttribute('src', 'about:blank#' + reservation.lease)
     return element
