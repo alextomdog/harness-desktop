@@ -195,19 +195,14 @@ function browserIdentity(): { userAgent: string; acceptLanguages: string; client
     // Every client hint, not only the short one: Chromium sends the full list and the high-entropy
     // values too, and Electron's own brand appears in them. Overriding one and leaving the rest is how a
     // request ends up naming two different browsers — the shape a gateway reads as not-a-browser.
+    // Only what a real Chrome sends unprompted. The high-entropy hints — full version list, platform
+    // version, architecture, bitness, model, wow64, form factors — are sent only when a server asks for
+    // them by Accept-CH, so sending them on every request is itself the shape of something that is not a
+    // browser. Chromium still sends its own when asked; these three are the ones it always sends.
     clientHints: {
       'sec-ch-ua': `"Chromium";v="${major}", "Not;A=Brand";v="24", "Google Chrome";v="${major}"`,
-      'sec-ch-ua-full-version-list':
-        `"Chromium";v="${version}", "Not;A=Brand";v="24.0.0.0", "Google Chrome";v="${version}"`,
-      'sec-ch-ua-full-version': `"${version}"`,
       'sec-ch-ua-mobile': '?0',
       'sec-ch-ua-platform': `"${platform}"`,
-      'sec-ch-ua-platform-version': '"10.0.0"',
-      'sec-ch-ua-arch': '"x86"',
-      'sec-ch-ua-bitness': '"64"',
-      'sec-ch-ua-model': '""',
-      'sec-ch-ua-wow64': '?0',
-      'sec-ch-ua-form-factors': '"Desktop"',
     },
   }
 }
