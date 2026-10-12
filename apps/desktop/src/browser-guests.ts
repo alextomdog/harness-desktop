@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { app, BrowserWindow, session, type Session, type WebContents } from 'electron'
 import type {
   DesktopBrowserLeaseId,
@@ -11,7 +11,6 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { offersPage } from './browser-pages.ts'
 import { DESKTOP_IPC } from './ipc.ts'
-
 
 /**
  * The script every sidebar guest runs before its page does.
@@ -23,41 +22,96 @@ import { DESKTOP_IPC } from './ipc.ts'
  * application's data so it is deployed with the app and stays current with it.
  * @returns a file URL for the guest's preload, or undefined when it cannot be written.
  */
+// A session exists the first time its partition is used, which is before the guest that needs it — so
+// this covers a view that comes back from a previous run and is never handed a fresh reservation. Only
+// partitions the sidebar uses: the application's own pages keep the identity they state for themselves.
+app.on('session-created', (created) => {
+  const storage = created.storagePath
+  if (!storage?.includes('dsh-sidebar-browser')) return
+  const preload = guestPreloadUrl()
+  if (preload === undefined) return
+  try {
+    created.registerPreloadScript({ type: 'frame', filePath: fileURLToPath(preload) })
+  } catch (error) {
+    console.error('dsh desktop: the guest preload script could not be registered', error)
+  }
+})
+
 function guestPreloadUrl(): string | undefined {
-  const source = `try {
+  const source = buildGuestPreloadSource()
+  try {
+    const directory = app.getPath('userData')
+    const file = join(directory, 'browser-guest-preload.js')
+    mkdirSync(directory, { recursive: true })
+    // The file may not be there yet, which is the ordinary first case rather than a failure: reading it
+    // before it exists threw, and that throw is what stopped it from ever being written.
+    let previous = ''
+    try {
+      previous = readFileSync(file, 'utf8')
+    } catch {
+      // Nothing written yet.
+    }
+    if (!previous.includes(source)) writeFileSync(file, source, 'utf8')
+    return pathToFileURL(file).href
+  } catch (error) {
+    console.error('dsh desktop: writing the guest preload script failed', error)
+    return undefined
+  }
+}
+
+/**
+ * The preload's text, kept apart from where it is written so a failure names the step that failed.
+ * @returns the script every sidebar guest runs before its page does.
+ */
+function buildGuestPreloadSource(): string {
+  const version = process.versions.chrome
+  const major = version.split('.')[0]
+  const platform = process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux'
+  const spoof = `try {
   var brands = [
-    { brand: 'Chromium', version: '${process.versions.chrome.split('.')[0]}' },
+    { brand: 'Chromium', version: '${major}' },
     { brand: 'Not;A=Brand', version: '24' },
-    { brand: 'Google Chrome', version: '${process.versions.chrome.split('.')[0]}' },
+    { brand: 'Google Chrome', version: '${major}' },
   ];
   var full = [
-    { brand: 'Chromium', version: '${process.versions.chrome}' },
+    { brand: 'Chromium', version: '${version}' },
     { brand: 'Not;A=Brand', version: '24.0.0.0' },
-    { brand: 'Google Chrome', version: '${process.versions.chrome}' },
+    { brand: 'Google Chrome', version: '${version}' },
   ];
-  var platform = ${JSON.stringify(process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux')};
+  var platform = ${JSON.stringify(platform)};
   var data = {
     brands: brands, mobile: false, platform: platform,
     getHighEntropyValues: function () {
       return Promise.resolve({ architecture: 'x86', bitness: '64', brands: brands, fullVersionList: full,
         mobile: false, model: '', platform: platform, platformVersion: '10.0.0',
-        uaFullVersion: '${process.versions.chrome}', wow64: false, formFactors: ['Desktop'] });
+        uaFullVersion: '${version}', wow64: false, formFactors: ['Desktop'] });
     },
     toJSON: function () { return { brands: brands, mobile: false, platform: platform }; },
   };
-  Object.defineProperty(Navigator.prototype, 'userAgentData', { configurable: true, get: function () { return data; } });
+  // The getter a real browser reports is a native one, and a script that suspects a rewrite asks exactly
+  // that: its toString says [native code]. A getter that answers nothing of the sort is the tell.
+  // Measured against a real Chrome on this machine: these three disagreed. An empty window.chrome is the
+  // loudest of them — a browser that has the object but none of its parts is the shape of an automated
+  // one — so it is given the parts a real Chrome carries, alongside the memory and language it reports.
+  try {
+    var chromeObject = window.chrome || (window.chrome = {});
+    chromeObject.loadTimes = chromeObject.loadTimes || function () { return {}; };
+    chromeObject.csi = chromeObject.csi || function () { return {}; };
+    chromeObject.app = chromeObject.app || { isInstalled: false, InstallState: {}, RunningState: {} };
+    Object.defineProperty(Navigator.prototype, 'deviceMemory', { configurable: true, get: function () { return 8; } });
+    Object.defineProperty(Navigator.prototype, 'languages', { configurable: true, get: function () { return ['zh-CN', 'zh']; } });
+  } catch (error) { /* a page that cannot be answered for is left exactly as it was */ }
+  var native = 'function get userAgentData() { [native code] }';
+  var getter = function () { return data; };
+  getter.toString = function () { return native; };
+  Object.defineProperty(Navigator.prototype, 'userAgentData', { configurable: true, get: getter });
 } catch (error) { /* a page that cannot be answered for is left exactly as it was */ }
 `
-  try {
-    const directory = app.getPath('userData')
-    const file = join(directory, 'browser-guest-preload.js')
-    mkdirSync(directory, { recursive: true })
-    if (!readFileSync(file, 'utf8').includes(source)) writeFileSync(file, source, 'utf8')
-    return pathToFileURL(file).href
-  } catch {
-    return undefined
-  }
+  // These guests share one world with their preload, so the rewrite below belongs to the page itself and
+  // happens before the page's own scripts: exactly the moment a gateway asks its question.
+  return spoof
 }
+
 interface GuestLease {
   readonly owner: WebContents
   readonly partition: string
@@ -243,6 +297,18 @@ export class DesktopBrowserGuests {
         return
       }
       lease.attached = true
+      // Registered here, where a guest is actually being created, rather than only where a reservation is
+      // handed out: a restored view comes back through this path, and its page runs its own scripts before
+      // any later moment. The session may already know this preload, which is not an error.
+      const preload = guestPreloadUrl()
+      if (preload !== undefined) {
+        try {
+          session.fromPartition(lease.partition)
+            .registerPreloadScript({ type: 'frame', filePath: fileURLToPath(preload) })
+        } catch {
+          // Already registered for this partition.
+        }
+      }
       // Keep Electron's allowpopups dispatch flag; the guest handler still denies native windows.
       for (const key of Object.keys(preferences)) {
         if (key !== 'disablePopups') Reflect.deleteProperty(preferences, key)
@@ -250,7 +316,11 @@ export class DesktopBrowserGuests {
       Object.assign(preferences, {
         partition: lease.partition,
         nodeIntegration: false, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false,
-        contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false,
+        // Sandbox and world isolation off deliberately, for these guests only: a sandboxed renderer cannot
+        // receive a preload at all, and in an isolated world a preload's rewrite belongs to its own world —
+        // it never reaches the page, and a gateway's script reads the page's. Both were needed before such
+        // a page could finish loading. The application's own pages and every other window keep theirs.
+        contextIsolation: false, sandbox: false, webSecurity: true, allowRunningInsecureContent: false,
         webviewTag: false, plugins: false, navigateOnDragDrop: false, disableDialogs: true,
         devTools: !app.isPackaged,
       })
