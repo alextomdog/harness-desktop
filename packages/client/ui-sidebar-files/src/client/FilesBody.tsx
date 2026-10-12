@@ -56,6 +56,18 @@ const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base'
  * @param event - the drag start.
  * @param path - the entry's workspace-relative path.
  */
+/**
+ * The desktop host's native file drag, when this build has one.
+ *
+ * A drag that carries a path is text; a drop target that wants a file — a page in the sidebar, or any
+ * other application — writes that text into itself instead of uploading. The host can start a drag that
+ * carries the real file, which is what an upload field accepts.
+ * @returns the host's drag entry point, or undefined in a build without one.
+ */
+function hostFileDrag(): ((path: string) => Promise<boolean>) | undefined {
+  return (globalThis as { __DSH_HOST_PATHS__?: { startDrag?: (path: string) => Promise<boolean> } })
+    .__DSH_HOST_PATHS__?.startDrag
+}
 export function dragOut(event: ReactDragEvent<HTMLButtonElement>, path: string): void {
   event.dataTransfer.effectAllowed = 'copy'
   event.dataTransfer.setData('text/plain', path)
@@ -123,7 +135,15 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
           className={css.row}
           onClick={() => { tree.onOpen(path) }}
           draggable
-          onDragStart={(event) => { dragOut(event, path) }}
+          onDragStart={(event) => {
+            // A file the host can drag carries the file itself, which is what an upload field accepts.
+            // A folder row below keeps the path: one native drag carries one file, and a folder is named
+            // by its path here as everywhere else.
+            const startDrag = hostFileDrag()
+            if (startDrag === undefined) { dragOut(event, path); return }
+            event.preventDefault()
+            void startDrag(path)
+          }}
         >
           <FileTypeIcon kind={classifyFileType(entry.name)} size={16} className={css.fileIcon} />
           <span className={css.name}>{entry.name}</span>
