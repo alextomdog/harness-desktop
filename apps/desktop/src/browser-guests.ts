@@ -1,9 +1,14 @@
 /** Main-process ownership and fixed isolation policy for Sidebar webview guests. */
 import { createHash, randomUUID } from 'node:crypto'
 import { app, BrowserWindow, session, type Session, type WebContents } from 'electron'
-import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
+import type {
+  DesktopBrowserLeaseId,
+  DesktopBrowserOpenRequest,
+  DesktopBrowserReservation,
+} from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { offersPage } from './browser-pages.ts'
 import { DESKTOP_IPC } from './ipc.ts'
+
 
 interface GuestLease {
   readonly owner: WebContents
@@ -58,6 +63,68 @@ const NEW_PAGE_DEADLINE_MS = 15_000
 const NEW_PAGE_POLL_MS = 100
 
 /** Owns workspace storage partitions independently from individual tab guests. */
+/**
+ * The identity the sidebar's pages present, taken from a real Chrome on Windows.
+ *
+ * A site's gateway decides whether to serve a page before any script runs, and the app's own default
+ * user agent names this application and Electron — which such gateways read as "not a browser" and
+ * answer with a challenge that never passes. The version here is the one the fingerprint came from, and
+ * the client hints below are stated to match it: a user agent claiming one version while the hints
+ * claim another is a mismatch of its own.
+ */
+/**
+ * The identity the sidebar's pages present: a plain Chrome, built from the engine actually running here.
+ *
+ * A site's gateway decides whether to serve a page before any script runs, and the app's own default
+ * user agent names this application and Electron — which such gateways read as "not a browser" and answer
+ * with a challenge that never passes. The version is taken from the engine rather than written down, so
+ * the user agent and the client hints cannot disagree with the engine or with each other: a page claiming
+ * one version while the hints claim another is a mismatch of its own.
+ */
+function browserIdentity(): { userAgent: string; acceptLanguages: string; clientHints: Record<string, string> } {
+  const version = process.versions.chrome
+  const major = version.split('.')[0] ?? '0'
+  const platform = process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux'
+  const os = process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7'
+    : process.platform === 'win32' ? 'Windows NT 10.0; Win64; x64' : 'X11; Linux x86_64'
+  return {
+    userAgent: `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`,
+    acceptLanguages: 'zh-CN,zh;q=0.9',
+    // Every client hint, not only the short one: Chromium sends the full list and the high-entropy
+    // values too, and Electron's own brand appears in them. Overriding one and leaving the rest is how a
+    // request ends up naming two different browsers — the shape a gateway reads as not-a-browser.
+    clientHints: {
+      'sec-ch-ua': `"Chromium";v="${major}", "Not;A=Brand";v="24", "Google Chrome";v="${major}"`,
+      'sec-ch-ua-full-version-list':
+        `"Chromium";v="${version}", "Not;A=Brand";v="24.0.0.0", "Google Chrome";v="${version}"`,
+      'sec-ch-ua-full-version': `"${version}"`,
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': `"${platform}"`,
+      'sec-ch-ua-platform-version': '"10.0.0"',
+      'sec-ch-ua-arch': '"x86"',
+      'sec-ch-ua-bitness': '"64"',
+      'sec-ch-ua-model': '""',
+      'sec-ch-ua-wow64': '?0',
+      'sec-ch-ua-form-factors': '"Desktop"',
+    },
+  }
+}
+function applyBrowserIdentity(guestSession: Session): void {
+  const identity = browserIdentity()
+  guestSession.setUserAgent(identity.userAgent, identity.acceptLanguages)
+  guestSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    // Rebuilt rather than edited: Chromium's own spellings are left out by name, so a request carries one
+    // set of client hints instead of two, and its language is stated once.
+    const replaced = new Set([...Object.keys(identity.clientHints), 'accept-language'].map(name => name.toLowerCase()))
+    const requestHeaders: Record<string, string> = {}
+    for (const [name, value] of Object.entries(details.requestHeaders)) {
+      if (!replaced.has(name.toLowerCase())) requestHeaders[name] = value
+    }
+    Object.assign(requestHeaders, identity.clientHints)
+    requestHeaders['Accept-Language'] = identity.acceptLanguages
+    callback({ requestHeaders })
+  })
+}
 export class DesktopBrowserGuests {
   private readonly partitions = new Map<string, string>()
   private readonly leases = new Map<DesktopBrowserLeaseId, GuestLease>()
@@ -80,7 +147,9 @@ export class DesktopBrowserGuests {
     let partition = this.partitions.get(workspace)
     if (partition === undefined) {
       partition = `persist:dsh-sidebar-browser-${createHash('sha256').update(workspace).digest('hex').slice(0, 32)}`
-      this.configureSession(session.fromPartition(partition))
+      const guestSession = session.fromPartition(partition)
+      this.configureSession(guestSession)
+      applyBrowserIdentity(guestSession)
       this.partitions.set(workspace, partition)
     }
     const lease = randomUUID() as DesktopBrowserLeaseId
