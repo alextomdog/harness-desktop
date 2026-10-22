@@ -272,6 +272,11 @@ export function apply(ctx: Context): void {
     notifyArchivedNotOpenable: () => { notify({ kind: 'archivedNotOpenable' }) },
     renameWorkspace: async (workspaceId, title) => { await workspaces.rename(workspaceId, title) },
     deleteWorkspace: async (workspaceId) => { await workspaces.delete(workspaceId) },
+    // Best effort: a Host with no file manager, or a directory that has since moved, answers with a
+    // failure the reader can do nothing about, and the menu closes either way.
+    revealWorkspacePath: (path) => {
+      void ctx.remote.session.openWorkspacePath({ path, action: 'reveal' }).catch(() => undefined)
+    },
     insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
       await workspaces.insertBefore(workspaceId, beforeWorkspaceId)
     },

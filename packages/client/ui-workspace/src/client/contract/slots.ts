@@ -295,6 +295,11 @@ export type WorkspaceBrowserInjected = {
   /** Delete only a Host Workspace registration; directory and Session logs remain. */
   deleteWorkspace: (workspaceId: WorkspaceId) => Promise<void>
   /**
+   * Show a Workspace's directory in the Host's file manager.
+   * @param path - the Workspace root, as its group already carries it.
+   */
+  revealWorkspacePath: (path: string) => void
+  /**
    * Reorder a Workspace in the durable registry display order.
    * Omitted anchor appends to the end.
    */

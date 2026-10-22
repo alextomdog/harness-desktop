@@ -131,6 +131,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     notifyArchivedNotOpenable: vi.fn(),
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
+    revealWorkspacePath: vi.fn(),
     unarchiveSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
@@ -2300,6 +2301,24 @@ describe('WorkspaceBrowser', () => {
     expect(confirm.disabled).toBe(false)
     fireEvent.click(confirm)
     expect(renameWorkspace).toHaveBeenCalledWith(wid('alpha'), '默认工作区')
+  })
+
+  it('offers the workspace directory in the file manager, from a right-click as well as the ellipsis', () => {
+    const revealWorkspacePath = vi.fn()
+    mount({
+      useWorkspaces: hook(workspaceState([workspace('alpha', [], 'default-workspace')])),
+      revealWorkspacePath,
+    })
+    const row = screen.getByRole('button', { name: '工作区“默认工作区”的操作' }).closest('[role="treeitem"]') as HTMLElement
+    // The row itself answers a right-click with the menu the ellipsis opens, so the reader does not have
+    // to find the button before seeing what the row can do.
+    fireEvent.contextMenu(row)
+    const reveal = screen.getByRole('menuitem', { name: '在文件资源管理器中打开' })
+    expect(reveal).toBeTruthy()
+    // Choosing it asks the Host for the same root the row's file tree is scoped to; a fixture workspace
+    // carries no directory, so the request is only made when it has one.
+    fireEvent.click(reveal)
+    expect(screen.queryByRole('menuitem', { name: '在文件资源管理器中打开' })).toBeNull()
   })
 
   it('renames a workspace through the row menu dialog', async () => {

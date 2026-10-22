@@ -256,6 +256,8 @@ type SessionTreeProps = Pick<
   onRenameRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
   /** Open the browser-owned delete-confirmation dialog for a real Workspace group. */
   onDeleteRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
+  /** Show a real Workspace's directory in the Host's file manager. */
+  revealWorkspacePath: (path: string) => void
   /** Open the rename dialog from a row title double-click. */
   onSessionRenameRequest: (sessionId: SessionNode['id'], currentTitle: string) => void
   /** One Session chosen from search that must be exposed and scrolled into view. */
@@ -285,7 +287,7 @@ function SessionTree({
   list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds,
   rowState, onLeaveArchivedOnly,
   workspaceReady, animationResetKey, usePanelInfo,
-  onRenameRequest, onDeleteRequest, onSessionRenameRequest,
+  onRenameRequest, onDeleteRequest, revealWorkspacePath, onSessionRenameRequest,
   renderSlot,
   insertWorkspaceBefore,
   nestWorkspaces, groupExpansion, setGroupExpanded,
@@ -550,6 +552,13 @@ function SessionTree({
                 const cwd = group.cwd
                 if (cwd === undefined || cwd === '') return
                 void navigator.clipboard.writeText(cwd)
+              },
+              // The same root for the same reason: the directory the row names is the one its file
+              // tree is showing, so that is the directory the Host opens.
+              reveal: () => {
+                const cwd = group.cwd
+                if (cwd === undefined || cwd === '') return
+                revealWorkspacePath(cwd)
               },
             }}
         />
@@ -921,6 +930,7 @@ export function WorkspaceBrowser({
   notifyArchivedNotOpenable,
   renameWorkspace,
   deleteWorkspace,
+  revealWorkspacePath,
   insertWorkspaceBefore,
   unarchiveSession,
   createWorkspace,
@@ -1488,6 +1498,7 @@ export function WorkspaceBrowser({
                   setDeleteTarget({ workspaceId, title })
                   setDeleteError(null)
                 }}
+                revealWorkspacePath={revealWorkspacePath}
               />
             ))}
       </div>

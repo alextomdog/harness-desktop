@@ -16,7 +16,7 @@ import clsx from 'clsx'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   HoverCard, IconArchiveOutlineRegular, IconCopyOutlineRegular, IconEditOutlineRegular,
-  IconEllipsisOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular,
+  IconEllipsisOutlineRegular, IconFolderCloseRegular, IconFolderOpenOutlineRegular, IconFolderOpenRegular,
   IconPinFillRegular, IconTrashOutlineRegular,
   IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, Menu, relativeTime, StateDot, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -220,7 +220,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
   containsCurrentDescendant?: boolean
   onToggle: () => void
   /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown). */
-  actions?: { rename: () => void; delete: () => void; copyPath?: () => void } | undefined
+  actions?: { rename: () => void; delete: () => void; copyPath?: () => void; reveal?: () => void } | undefined
   /** Present only for real Workspace rows in the grouped view. */
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
@@ -239,6 +239,10 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
     ...(actions?.copyPath === undefined
       ? []
       : [{ id: 'copy-path', label: t('copy.workspacePath'), icon: <IconCopyOutlineRegular /> }]),
+    // Offered on the same terms as the path copy: the row states what it can actually do.
+    ...(actions?.reveal === undefined
+      ? []
+      : [{ id: 'reveal', label: t('reveal.workspacePath'), icon: <IconFolderOpenOutlineRegular /> }]),
     { id: 'delete', label: t('delete.workspace'), icon: <IconTrashOutlineRegular />, danger: true },
   ]
   const ownRow = (
@@ -248,6 +252,11 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
       role="treeitem"
       aria-expanded={row.expanded}
       onClick={onToggle}
+      // Right-click offers the same menu the ellipsis does, so the row states what it can do without
+      // the reader having to find the button first. Without actions there is no menu to open.
+      onContextMenu={actions === undefined
+        ? undefined
+        : (event) => { event.preventDefault(); setMenuOpen(true) }}
       draggable={drag !== undefined}
       onDragStart={drag === undefined
         ? undefined
@@ -278,8 +287,9 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
               // Unknown ids leave before the dispatch: a future menu row must
               // not inherit the destructive branch as an else fallback.
               /* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
-              if (id !== 'rename' && id !== 'delete' && id !== 'copy-path') return
+              if (id !== 'rename' && id !== 'delete' && id !== 'copy-path' && id !== 'reveal') return
               if (id === 'copy-path') { actions.copyPath?.(); return }
+              if (id === 'reveal') { actions.reveal?.(); return }
               if (id === 'rename') actions.rename()
               else actions.delete()
             }}

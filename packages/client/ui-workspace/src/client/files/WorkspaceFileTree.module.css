@@ -294,7 +294,12 @@
   padding: 4px;
   border: 0.5px solid var(--dsw-alias-border-l4);
   border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-elevated, var(--dsw-alias-bg-skeleton));
+  /* The material every other menu in the application is made of: the menu
+     surface fill over a blur of what is behind it. This menu had the fill's
+     translucency without the blur, which is why the rows behind it showed
+     through its own labels. */
+  background: var(--dsw-menu-surface-fill, var(--dsw-alias-bg-elevated, var(--dsw-alias-bg-skeleton)));
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
   box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
 }
 
