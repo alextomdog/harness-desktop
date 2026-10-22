@@ -30,7 +30,26 @@ the work focused on the parts a person actually uses while an agent works beside
   opens: rename, copy the workspace path, **open the workspace directory in the OS file manager**, delete.
 - A per-workspace file tree with the usual file operations (open, rename, create, delete, copy relative/absolute path),
   and drag-and-drop of a real file out of the tree into another application.
-- A document preview sidebar for Word/Office material, so reviewing a document does not mean leaving the conversation.
+
+**The right-hand panel**
+
+The column beside the conversation holds the material the work is about, one tab per kind of material: files, document
+preview, the browser, plans, change review, scheduled tasks, and a terminal. Tabs stay mounted while you work on
+something else, so switching back does not reload what you were reading.
+
+**Editing files where they live**
+
+- A document opened in the preview **is editable in place**: `编辑` turns the reader into an editor, `Ctrl + S` (or
+  `Cmd + S`) writes the buffer back, and the tab grows the dot an editor shows for unsaved work. Closing a tab with
+  unsaved changes asks first, and offers "save and close" rather than dropping the work.
+- Saving carries the version the text was read at, so a file that changed underneath you is a decision — keep my
+  changes, or take the file — never a silent overwrite.
+- Spreadsheets open in a grid and are edited and saved the same way, one patch per save rather than a full
+  re-serialization; a workbook holding something the writer would drop stays read-only instead of losing it.
+- A text editor without a find bar is a toy, so the editor has find and replace (`查找 / 替换`) over the same buffer it
+  saves.
+- **`Shift + Space` quotes the selection into the composer.** Select a paragraph in a document, or text in the browser,
+  and the keys put it into the conversation as a quote — from the editor's own selection too, not only from a page.
 
 **The built-in browser (the 「网页」 view)**
 
