@@ -270,6 +270,7 @@ export class DesktopBrowserGuests {
     this.leases.delete(key)
     const guest = lease.guest
     if (guest !== undefined && !guest.isDestroyed()) {
+      console.error('dsh desktop: releasing the browser guest at the client\'s request')
       const destroyed = new Promise<void>((resolve) => { guest.once('destroyed', resolve) })
       guest.close({ waitForBeforeUnload: false })
       await destroyed
@@ -366,9 +367,11 @@ export class DesktopBrowserGuests {
         if (lease.owner === owner) void this.release(owner, id).catch((error: unknown) => { console.error(error) })
       }
     }
-    owner.on('did-start-navigation', (_event, _url, inPlace, mainFrame) => {
-      if (mainFrame && !inPlace) releaseAll()
-    })
+    // A main-frame navigation used to close every guest this window held. In this application the main
+    // frame also navigates for ordinary view and route changes, and those leave the guest documents alive:
+    // closing them there destroyed pages — and any form a reader had filled in — for a navigation that had
+    // not taken their elements away. Guests still end with their elements, and the hooks below still cover
+    // a window that is gone.
     owner.on('render-process-gone', releaseAll)
     owner.once('destroyed', releaseAll)
   }
@@ -640,6 +643,8 @@ export class DesktopBrowserGuests {
   private guestOf(leaseId: string): WebContents {
     const guest = this.leases.get(leaseId as DesktopBrowserLeaseId)?.guest
     if (guest === undefined || guest.isDestroyed()) {
+      // Naming the lease is what turns "a tool failed" into "this lease's page was already gone".
+      console.error('dsh desktop: a tool asked for a guest whose lease has no live page', leaseId)
       throw new Error('desktop browser: no live guest holds that lease')
     }
     return guest
@@ -659,6 +664,39 @@ export class DesktopBrowserGuests {
       guest.debugger.on('message', (_event, method, params) => {
         held.events.push({ seq: held.next++, method, params })
         if (held.events.length > MAX_CAPTURED_EVENTS) held.events.splice(0, held.events.length - MAX_CAPTURED_EVENTS)
+      })
+      // A guest that dies takes every page it held with it, and until now nothing said so: the tools
+      // answered "no live guest holds that lease" long after the fact, with no record of the moment the
+      // page was lost. The reason is recorded here, and a crash also reloads the page the reader is
+      // looking at instead of leaving a dead blank where their form was.
+      guest.on('render-process-gone', (_event, details) => {
+        console.error('dsh desktop: browser guest process gone:', details.reason, 'exit', String(details.exitCode))
+        if (details.reason === 'clean-exit' || guest.isDestroyed()) return
+        guest.reload()
+      })
+      // What this guest is showing, kept only so that losing it can be named. A guest that dies takes its
+      // pages with it, and a log that lists them is what lets the reader open them again — the forms they
+      // had filled in cannot be recovered, but the pages they were on can.
+      const showing = new Map<string, string>()
+      const remember = (): void => {
+        const url = guest.getURL()
+        if (url !== '' && !url.startsWith('about:')) showing.set(url, guest.getTitle())
+      }
+      guest.on('did-navigate', remember)
+      guest.on('did-navigate-in-page', remember)
+      guest.on('page-title-updated', remember)
+      guest.once('destroyed', () => {
+        if (showing.size > 0) {
+          console.error('dsh desktop: the pages this guest was showing:', [...showing.keys()].join(' | '))
+        }
+      })
+      guest.once('destroyed', () => {
+        console.error('dsh desktop: browser guest destroyed')
+        // The lease outlived its page: drop it so a later command names a missing lease rather than a
+        // lease whose guest is a corpse.
+        for (const [id, held] of this.leases) {
+          if (held.guest === guest) this.leases.delete(id)
+        }
       })
       guest.once('destroyed', () => { this.captured.delete(guest) })
       for (const domain of CAPTURED_DOMAINS) {

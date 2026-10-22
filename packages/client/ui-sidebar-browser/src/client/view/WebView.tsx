@@ -34,7 +34,17 @@ const WEB_VIEW_SIGNAL = new AbortController()
  * saved state belongs to the Session: the reader switching conversations expects to find the page
  * they were on, not a blank one.
  */
-let lastAddress: string | undefined
+/** Where the last address is kept between runs: the in-memory value dies with a reload. */
+const LAST_ADDRESS_KEY = 'dsh-sidebar-browser:last-address'
+
+let lastAddress: string | undefined = ((): string | undefined => {
+  try {
+    return globalThis.localStorage.getItem(LAST_ADDRESS_KEY) ?? undefined
+  } catch {
+    // Storage can be denied; remembering nothing is the same as never having been here.
+    return undefined
+  }
+})()
 
 /** Props the view needs: its own runtime share plus what the browser body reads from any seat. */
 export type WebViewProps = ConvViewProps
@@ -67,7 +77,15 @@ export function WebView(props: WebViewProps): ReactNode {
   const savedUrl = currentBrowserTarget(saved)?.url
   // Remember it for the next Session that opens this view, and start from this Session's own
   // address when it has one.
-  useEffect(() => { if (savedUrl !== undefined) lastAddress = savedUrl }, [savedUrl])
+  useEffect(() => {
+    if (savedUrl === undefined) return
+    lastAddress = savedUrl
+    try {
+      globalThis.localStorage.setItem(LAST_ADDRESS_KEY, savedUrl)
+    } catch {
+      // Storage can be denied; the in-memory value still serves this run.
+    }
+  }, [savedUrl])
   const firstUrl = useRef(savedUrl ?? lastAddress)
   const surface = useMemo<BrowserSurface>(() => ({
     id: WEB_VIEW_SURFACE_ID,
