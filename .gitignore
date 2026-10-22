@@ -46,3 +46,13 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 native/system/test/bin/
+
+# Build outputs that must never be committed (they are large and machine-specific).
+apps/desktop/dist/
+apps/desktop/out/
+native/system/build/
+*.bak
+*.bak-*
+
+# A separate MCP server project that happens to live in this checkout.
+js-reverse-mcp-main/
